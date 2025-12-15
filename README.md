@@ -2,17 +2,14 @@
 
 ## Overview
 
-FairCBM implements fairness-aware curriculum learning for Concept Bottleneck Models (CBMs) to mitigate performance disparities across Fitzpatrick skin types in dermatological diagnosis.
+Fairness-aware curriculum learning for Concept Bottleneck Models to mitigate performance disparities across Fitzpatrick skin types.
 
 **Key Features:**
-- **In-training fairness** via dual-component approach:
-  - Combined fairness loss (demographic parity + equalized odds)
-  - Adversarial discriminator with gradient reversal layer
-  - 3-phase warmup scheduler (0% → gradual → full fairness)
-- Group fairness metrics including demographic parity, equalized odds, and calibration
-- Medical interpretability through 23 morphological concept predictions
-- Rigorous evaluation stratified by Fitzpatrick types I-VI
-- Statistical validation through multi-run experiments with confidence intervals
+- In-training fairness via combined loss + adversarial debiasing
+- 3-phase warmup scheduler for training stability
+- Group fairness metrics (demographic parity, equalized odds, calibration)
+- Interpretable via 23 morphological concepts
+- Multi-run validation with statistical tests
 
 ## Project Structure
 
@@ -44,7 +41,14 @@ FairCBM/
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Create Conda Environment
+
+```bash
+conda create -n CBM-env python=3.10 -y
+conda activate CBM-env
+```
+
+### 2. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -58,7 +62,7 @@ Required packages:
 - matplotlib, seaborn
 - tqdm
 
-### 2. Prepare Data
+### 3. Prepare Data
 
 The SkinCap dataset should be organized as:
 ```
@@ -77,13 +81,13 @@ data/skincap/
 - `fitzpatrick_scale`: Skin type (1-6)
 - 23 concept columns (Papule, Plaque, Nodule, etc.)
 
-### 3. Quick Test (20 epochs)
+### 4. Quick Test (20 epochs)
 
 ```bash
 ./quick_test.sh fair_curriculum_cbm 20
 ```
 
-### 4. Train Single Model
+### 5. Train Single Model
 
 ```bash
 python scripts/train_all_models.py \
@@ -100,7 +104,7 @@ python scripts/train_all_models.py \
     --save_best
 ```
 
-### 5. Train All 4 Models for Comparison
+### 6. Train All 5 Models for Comparison
 
 ```bash
 # Train all 5 models for comparison
@@ -118,7 +122,7 @@ for model in direct standard_cbm curriculum_cbm fair_cbm fair_curriculum_cbm; do
 done
 ```
 
-### 6. Evaluate and Compare
+### 7. Evaluate and Compare
 
 ```bash
 python scripts/evaluate_fairness_comparison.py \
@@ -158,40 +162,31 @@ FairCBM provides 4 model variants for comprehensive comparison:
 - `--adversarial_lambda`: Weight for adversarial discriminator loss (default: 0.01)
 - `--adversarial_warmup_epochs`: Duration of warmup phase in epochs (default: 30% of total epochs)
 
-**Note on Warmup Scheduling:** The adversarial lambda follows a 3-phase schedule to prevent training instability:
-  - **Phase 1 (0-20%):** λ=0.0 - Learn primary task without fairness constraints
-  - **Phase 2 (20-50%):** λ: 0.0→target - Linear warmup, gradual fairness introduction
-  - **Phase 3 (50-100%):** λ=target - Full fairness enforcement
+**Warmup Scheduling:** 3-phase schedule prevents training instability:
+  - **Phase 1 (0-20%):** λ=0.0 (learn task)
+  - **Phase 2 (20-50%):** λ: 0.0→target (linear warmup)
+  - **Phase 3 (50-100%):** λ=target (full fairness)
 
-**TIn-Training Fairness Method
+## In-Training Fairness
 
-FairCBM enforces fairness **during training** (not just evaluation) through a dual-component approach:
+Dual-component approach:
 
 ### 1. Combined Fairness Loss
-Directly optimizes for group fairness using two components:
-- **Demographic Parity:** Minimizes prediction rate differences across Fitzpatrick groups
-  - Loss: `|P(Ŷ=1|A=a) - P(Ŷ=1|A=a')|`
-- **Equalized Odds:** Ensures equal TPR and FPR across groups
-  - Loss: `|P(Ŷ=1|Y=y,A=a) - P(Ŷ=1|Y=y,A=a')|` for y ∈ {0,1}
+- **Demographic Parity:** `|P(Ŷ=1|A=a) - P(Ŷ=1|A=a')|`
+- **Equalized Odds:** `|P(Ŷ=1|Y=y,A=a) - P(Ŷ=1|Y=y,A=a')|` for y ∈ {0,1}
 
 ### 2. Adversarial Discriminator
-Learns group-invariant representations via gradient reversal:
-- **Discriminator:** Predicts Fitzpatrick type from concept features
-- **Gradient Reversal Layer:** Reverses gradients to make encoder unable to encode group information
-- **Effect:** Concept representations become group-agnostic while maintaining task performance
+Gradient reversal layer makes concept representations group-invariant:
+- Discriminator predicts Fitzpatrick type from concepts
+- Reversed gradients prevent encoder from encoding group information
 
-### 3. Warmup Scheduling (Key Innovation)
-Static fairness weights cause training instability. FairCBM uses **3-phase warmup**:
-- **Phase 1 (0-20% epochs):** λ_adv = 0.0 - Model learns concepts and binary classification
-- **Phase 2 (20-50% epochs):** λ_adv: 0.0 → target - Gradual fairness introduction  
-- **Phase 3 (50-100% epochs):** λ_adv = target - Full fairness fine-tuning
+### 3. Warmup Scheduling
+3-phase schedule prevents training instability:
+- **Phase 1 (0-20%):** λ_adv = 0.0 (learn task)
+- **Phase 2 (20-50%):** λ_adv: 0.0 → target (gradual)
+- **Phase 3 (50-100%):** λ_adv = target (full fairness)
 
-**Example (20 epochs, λ_target=0.01):**
-- Epochs 1-4: No fairness (λ=0.000)
-- Epochs 5-10: Linear warmup (λ=0.000→0.010)
-- Epochs 11-20: Full fairness (λ=0.010)
-
-This prevents adversarial loss explosion and Val F1 collapse observed with static weights.
+Prevents adversarial loss explosion and performance collapse.
 
 ### Combined Objective
 ```
@@ -236,15 +231,17 @@ sbatch slurm/run_single_experiment.slurm fair_curriculum_cbm swin 42
 ### Full 100-Run Validation
 
 ```bash
-# Launches 100 parallel jobs, trains all 4 models in each
+# Default: 100 runs
 sbatch slurm/run_multi_experiments.slurm
+
+# Custom number of runs (e.g., 20 for faster testing)
+sbatch --array=1-20 slurm/run_multi_experiments.slurm
+
+# Set N_RUNS environment variable (alternative method)
+N_RUNS=20 sbatch --array=1-20 slurm/run_multi_experiments.slurm
 ```
 
-This will:
-- Run 100 independent experiments (different seeds)
-- Train all 5 models (Direct, Standard CBM, Curriculum CBM, Fair CBM, Fair Curriculum CBM) in each run
-- Total: 500 experiments (100 runs × 5 models)
-- Estimated time: ~24 hours per run
+Runs N independent experiments with different seeds (default N=100). Trains all 5 models per run (N×5 total experiments). Estimated time: ~24 hours per run.
 
 ### Analyze Aggregated Results
 
@@ -273,11 +270,11 @@ Comparison of all 4 models on test set:
 | Curriculum CBM | 0.73 | 0.46 | 0.27 | 0.24 |
 | **Fair Curriculum** | **0.71** | **0.56** | **0.15** | **0.10** |
 
-**Key Improvements (Fair vs. Curriculum):**
-- **Worst-group F1:** +22% (0.46 → 0.56)
-- **Performance Gap:** -44% (0.27 → 0.15)
-- **Demographic Parity:** -58% (0.24 → 0.10)
-- **Overall F1:** -3% (0.73 → 0.71) - minimal performance cost
+**Key Improvements (Fair Curriculum vs. Curriculum):**
+- Worst-group F1: +22% (0.46 → 0.56)
+- Performance Gap: -44% (0.27 → 0.15)
+- Demographic Parity: -58% (0.24 → 0.10)
+- Overall F1: -3% (0.73 → 0.71)
 
 **Success Criteria:**
 1. Performance gap < 0.15
@@ -288,7 +285,6 @@ Comparison of all 4 models on test set:
 
 ## Documentation
 
-- **[Integration Plan](INTEGRATION_PLAN.md)**: Complete implementation roadmap
 - **[Fairness Methodology](docs/fairness_methodology.md)**: Theoretical foundation
 - **[Metrics Guide](docs/metrics_guide.md)**: Fairness metric definitions
 - **[Experimental Design](docs/experimental_design.md)**: Protocol & validation
@@ -303,17 +299,16 @@ If you use this code, please cite:
   author={Cockayne, Matthew},
   year={2024},
   url={https://github.com/Matt-Cockayne/FairCBM},
-  note={Self-contained implementation combining curriculum learning with adversarial debiasing for equitable medical diagnosis across diverse skin types}
+  note={Curriculum learning with adversarial debiasing for fair dermatology diagnosis}
 }
 ```
 
 ## Related Work
 
-FairCBM builds upon:
-- **Concept Bottleneck Models** (Koh et al., 2020): Interpretable deep learning with human-understandable concepts
-- **Curriculum Learning** (Bengio et al., 2009): Progressive training from simple to complex concepts
-- **Domain-Adversarial Training** (Ganin & Lempitsky, 2015): Gradient reversal for fairness
-- **Aequitas Toolkit** (Saleiro et al., 2018): Fairness auditing framework
+- Concept Bottleneck Models (Koh et al., 2020)
+- Curriculum Learning (Bengio et al., 2009)
+- Domain-Adversarial Training (Ganin & Lempitsky, 2015)
+- Aequitas Toolkit (Saleiro et al., 2018)
 
 ## Contact
 

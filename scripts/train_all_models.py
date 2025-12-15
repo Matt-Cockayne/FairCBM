@@ -128,7 +128,7 @@ def train_epoch_direct(model, dataloader, optimizer, device):
     all_labels = []
     
     for batch in tqdm(dataloader, desc="Training"):
-        images, _, binary_labels, _ = batch  # Ignore concepts and fitzpatrick
+        images, binary_labels, _ = batch  # label_type='binary' returns 3 values
         images = images.to(device)
         binary_labels = binary_labels.to(device)
         
@@ -313,6 +313,10 @@ def train_epoch_fair_curriculum_cbm(model, dataloader, optimizer, device, epoch,
         loss = loss_dict['total_loss']
         
         loss.backward()
+        
+        # Clip gradients to prevent adversarial explosion
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         optimizer.step()
         
         total_loss += loss.item()
@@ -366,7 +370,13 @@ def evaluate(model, dataloader, device, model_type, compute_fairness=True):
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            images, _, binary_labels, fitzpatrick = batch
+            # Handle different batch formats based on label_type
+            if model_type == 'direct':
+                # label_type='binary': (image, label, fitzpatrick)
+                images, binary_labels, fitzpatrick = batch
+            else:
+                # label_type='concept': (image, concepts, label, fitzpatrick)
+                images, _, binary_labels, fitzpatrick = batch
             images = images.to(device)
             
             if model_type == 'direct':
@@ -410,7 +420,7 @@ def main():
     
     # Model configuration
     parser.add_argument('--model_type', type=str, required=True,
-                        choices=['direct', 'standard_cbm', 'curriculum_cbm', 'fair_curriculum_cbm'],
+                        choices=['direct', 'standard_cbm', 'curriculum_cbm', 'fair_cbm', 'fair_curriculum_cbm'],
                         help='Type of model to train')
     parser.add_argument('--backbone', type=str, default='swin',
                         choices=['swin', 'convnext', 'vit', 'efficientnet', 'mobilenet'],
@@ -647,9 +657,10 @@ def main():
             
             history['val'].append({'epoch': epoch+1, **val_results})
             
-            # Save best model
-            if args.save_best and val_f1 > best_val_f1:
+            # Save best model (always save best for multi-run selection)
+            if val_f1 > best_val_f1:
                 best_val_f1 = val_f1
+                best_epoch = epoch
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
@@ -657,11 +668,13 @@ def main():
                     'val_f1': val_f1,
                     'config': config
                 }, save_dir / 'best_model.pt')
-                print(f"Saved best model (F1: {val_f1:.4f})")
+                if args.save_best:
+                    print(f"Saved best model (F1: {val_f1:.4f})")
     
     # Final test evaluation
     print("\nFinal Test Evaluation:")
-    if args.save_best and (save_dir / 'best_model.pt').exists():
+    # Always load best model for evaluation (best_model.pt always saved now)
+    if (save_dir / 'best_model.pt').exists():
         checkpoint = torch.load(save_dir / 'best_model.pt')
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Loaded best model from epoch {checkpoint['epoch']+1}")

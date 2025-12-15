@@ -371,7 +371,14 @@ class FairnessAwareCBM(MinimalCurriculumCBM):
         # Compute adversarial loss (predict Fitzpatrick type from concept features)
         # Gradient reversal encourages group-invariant representations
         group_logits = self.adversarial_discriminator(concept_features, alpha=self.adversarial_alpha)
-        adversarial_loss = F.cross_entropy(group_logits, group_labels_indexed)
+        
+        # Use label smoothing to prevent overconfident predictions and loss explosion
+        # Smoothing=0.1 means 90% confidence on true class, 10% distributed to others
+        adversarial_loss = F.cross_entropy(group_logits, group_labels_indexed, label_smoothing=0.1)
+        
+        # Cap adversarial loss to prevent explosion (critical fix!)
+        # When discriminator becomes overconfident, cross-entropy can explode
+        adversarial_loss = torch.clamp(adversarial_loss, max=10.0)
         
         # Total loss
         # Note: Adversarial loss has negative weight (maximize via gradient reversal)

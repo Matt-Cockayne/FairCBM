@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+CBM-env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs (explicitly excluded)
+logs/
+*.log
+*.err
+*.out
+slurm-*.out
+slurm-*.err
+
+# Models and Checkpoints (explicitly excluded)
+*.pt
+*.pth
+*.ckpt
+results/
+best_models/
+checkpoints/
+*.pkl
+*.pickle
+
+# Data (large files)
+data/skincap/
+data/celeba/
+*.csv
+!data/skincap_concepts.txt
+!data/skincap_classes.txt
+!data/celeba_concepts.txt
+!data/celeba_classes.txt
+!data/concepts.txt
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Cache
+.cache/
+*.cache
+
+# Plots and visualizations
+*.png
+*.jpg
+*.jpeg
+*.pdf
+!docs/**/*.png
+!docs/**/*.pdf
+
+# Misc
+.pytest_cache/
+.coverage
+htmlcov/
+*.bak
