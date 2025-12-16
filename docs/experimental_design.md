@@ -58,7 +58,17 @@ Experimental protocol for validating FairCBM. Includes statistical tests, multi-
 ### Model Variants (5 Total)
 
 | Model ID | Type | Interpretable | Curriculum | Fairness | Purpose |
-|----------|------|---------------|------------|----------|---------|
+|----------|------|---------------|------------|----------|---------|  
+| M1 | Direct | No | No | No | Non-interpretable baseline |
+| M2 | Standard CBM | Yes | No | No | Interpretable baseline |
+| M3 | Curriculum CBM | Yes | Yes (concept) | No | Concept difficulty curriculum |
+| M4 | Fair Standard CBM | Yes | No | Yes | Static fairness approach |
+| M5 | **Fair Curriculum CBM** | Yes | Yes (fairness-first) | Yes | **4-phase fairness-first curriculum** |
+
+**Key Comparisons:**
+- **M5 vs. M3:** Effect of adding fairness-first curriculum to concept curriculum
+- **M5 vs. M4:** Effect of phased fairness vs. static fairness
+- **M5 vs. M1/M2:** Overall improvement over baselines
 | M1 | Direct | No | No | No | Non-interpretable baseline |
 | M2 | Standard CBM | Yes | No | No | Interpretable baseline |
 | M3 | Curriculum CBM | Yes | Yes | No | Curriculum baseline |

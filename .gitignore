@@ -81,3 +81,6 @@ temp/
 .coverage
 htmlcov/
 *.bak
+
+# Docs
+docs/ 

@@ -217,8 +217,8 @@ print(history['val'][best_idx]['epoch'])
 # Train all 5 models
 train_model "direct" "Direct Classifier"
 train_model "standard_cbm" "Standard CBM"
+train_model "fair_standard_cbm" "Fair Standard CBM (no curriculum)"
 train_model "curriculum_cbm" "Curriculum CBM"
-train_model "fair_cbm" "Fair CBM (no curriculum)"
 train_model "fair_curriculum_cbm" "Fair Curriculum CBM (full)"
 
 echo "=========================================="
@@ -247,7 +247,7 @@ if [ $SLURM_ARRAY_TASK_ID -eq $N_RUNS ]; then
     echo "Best models (selected during training):"
     
     BEST_MODELS_DIR="${RESULTS_DIR}/${EXP_NAME}/best_models"
-    for MODEL_TYPE in direct standard_cbm curriculum_cbm fair_cbm fair_curriculum_cbm; do
+    for MODEL_TYPE in direct standard_cbm fair_standard_cbm curriculum_cbm fair_curriculum_cbm; do
         if [ -f "${BEST_MODELS_DIR}/${MODEL_TYPE}_best_info.txt" ]; then
             echo ""
             echo "${MODEL_TYPE}:"

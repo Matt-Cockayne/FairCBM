@@ -21,6 +21,41 @@ from typing import Optional, Dict
 import numpy as np
 
 
+class GradientReversalFunction(torch.autograd.Function):
+    """
+    Gradient Reversal Layer for adversarial training.
+    
+    Forward: Identity
+    Backward: Negate gradients × alpha
+    
+    Reference:
+        Ganin & Lempitsky (2015). "Unsupervised Domain Adaptation by Backpropagation"
+    """
+    
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -ctx.alpha * grad_output, None
+
+
+def gradient_reversal(x: torch.Tensor, alpha: float = 1.0) -> torch.Tensor:
+    """
+    Apply gradient reversal to input tensor.
+    
+    Args:
+        x: Input tensor
+        alpha: Gradient reversal strength (default: 1.0)
+        
+    Returns:
+        Output tensor (same as input in forward pass)
+    """
+    return GradientReversalFunction.apply(x, alpha)
+
+
 def compute_demographic_parity_loss(predictions: torch.Tensor,
                                    groups: torch.Tensor,
                                    reduction: str = 'mean') -> torch.Tensor:

@@ -352,6 +352,135 @@ Reweight or resample training data. May discard useful data.
 
 ---
 
+## Fair Curriculum CBM: 4-Phase Fairness-First Curriculum
+
+### Overview
+
+Fair Curriculum CBM extends the static fairness approach with a **dynamic 4-phase curriculum** that prioritizes group fairness before concept complexity.
+
+### Phase Design
+
+#### Phase 1: Balanced Foundation (0-25% of training)
+**Goal:** Learn group-invariant representations naturally
+
+- **Sampling:** Balanced per Fitzpatrick type (~equal samples)
+- **Fairness Loss:** λ_fair = 0 (no explicit fairness penalty)
+- **Adversarial:** λ_adv = 0 (disabled)
+- **Concepts:** All 23 concepts (joint training)
+- **Rationale:** Balanced data prevents group encoding in initial representations. Unlike Curriculum CBM which orders concepts by difficulty, Fair Curriculum CBM trains all concepts jointly while varying fairness objectives.
+
+#### Phase 2: Demographic Parity Focus (25-50%)
+**Goal:** Equalize positive prediction rates P(Ŷ=1|A=a)
+
+- **Sampling:** Continue balanced sampling
+- **Fairness Loss:** L_fairness = L_dp only
+- **Adversarial:** λ_adv = 0 (not yet active)
+- **Concepts:** All 23 concepts (joint training)
+- **Rationale:** Focus on single fairness criterion before adding complexity
+
+#### Phase 3: Equalized Odds Focus (50-75%)
+**Goal:** Equalize TPR and FPR across groups
+
+- **Sampling:** Stratified by (group × label) for 12 strata
+- **Fairness Loss:** L_fairness = 0.3*L_dp + 0.7*L_eo
+- **Adversarial:** Linear warmup 0→0.01 (gradient reversal active)
+- **Concepts:** All 23 concepts (joint training)
+- **Rationale:** Shift emphasis to equalized odds while maintaining DP
+
+#### Phase 4: Performance Parity (75-100%)
+**Goal:** Minimize F1 range across groups
+
+- **Sampling:** Error-driven (weight ∝ 1/(F1+ε) for F1≥0.1, minimal weight for F1<0.1)
+- **Fairness Loss:** L_fairness = 0.33*L_dp + 0.33*L_eo + 0.34*L_pg
+- **Adversarial:** λ_adv = 0.01 (full strength)
+- **Concepts:** All 23 concepts (joint training)
+- **Rationale:** Balance all fairness criteria, oversample struggling groups
+
+### FairnessAwareSampler
+
+Custom PyTorch Sampler that implements phase-dependent sampling strategies:
+
+```python
+class FairnessAwareSampler(Sampler):
+    def __iter__(self):
+        phase = self._get_phase()
+        
+        if phase in ['balanced_foundation', 'demographic_parity']:
+            return self._balanced_group_sampling()
+        elif phase == 'equalized_odds':
+            return self._stratified_sampling()
+        elif phase == 'performance_parity':
+            return self._error_driven_sampling()
+```
+
+**Balanced Sampling:** Samples `batch_size // 6` from each Fitzpatrick type
+
+**Stratified Sampling:** Samples equally from 12 strata (6 groups × 2 labels)
+
+**Error-Driven Sampling:** 
+- Groups with F1 ≥ 0.1: weight = 1/(F1 + 0.1)
+- Groups with F1 < 0.1: weight = 0.5 (minimal, likely missing from validation)
+- Prevents oversampling groups absent from validation set
+
+### PhasedFairnessLoss
+
+Dynamic fairness loss that changes emphasis per phase:
+
+```python
+class PhasedFairnessLoss(nn.Module):
+    def forward(self, predictions, labels, groups, epoch):
+        phase = self._get_phase(epoch)
+        
+        if phase == 'balanced_foundation':
+            return 0.0  # No fairness loss
+        
+        L_dp = self._demographic_parity_loss(...)
+        L_eo = self._equalized_odds_loss(...)
+        
+        if phase == 'demographic_parity':
+            return L_dp
+        elif phase == 'equalized_odds':
+            return 0.3 * L_dp + 0.7 * L_eo
+        elif phase == 'performance_parity':
+            L_pg = self._performance_gap_loss(...)
+            return 0.33*L_dp + 0.33*L_eo + 0.34*L_pg
+```
+
+### Key Advantages Over Static Fairness
+
+1. **Progressive Fairness:** Builds foundation before enforcing constraints
+2. **Targeted Sampling:** Adapts data distribution to phase objectives
+3. **Balanced Multi-Criteria:** Focuses on one criterion before combining
+4. **Error-Driven Adaptation:** Responds to group performance in Phase 4
+5. **Stability:** Gradual introduction prevents training collapse
+
+### Training Integration
+
+DataLoader must be recreated every epoch to update sampler:
+
+```python
+for epoch in range(total_epochs):
+    # Recreate DataLoader with updated sampler
+    sampler = FairnessAwareSampler(
+        groups=train_groups,
+        labels=train_labels,
+        batch_size=batch_size,
+        epoch=epoch,
+        total_epochs=total_epochs,
+        group_f1_scores=model.group_f1_scores  # For Phase 4
+    )
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_sampler=sampler,
+        num_workers=4
+    )
+    
+    # Training loop...
+```
+
+Group F1 scores are updated every 5 epochs during validation to inform Phase 4 error-driven sampling.
+
 ## Future Directions
 
 1. Individual fairness (similar inputs → similar predictions)
@@ -359,6 +488,7 @@ Reweight or resample training data. May discard useful data.
 3. Causal fairness (distinguish legitimate causal pathways)
 4. Dynamic fairness (adapt constraints during deployment)
 5. Certified fairness (provable guarantees)
+6. Adaptive phase boundaries based on validation metrics
 
 ---
 

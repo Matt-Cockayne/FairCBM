@@ -98,10 +98,19 @@ class SkinCapDataset(Dataset):
             df_full = df_full[df_full['fitzpatrick_scale'] != -1].copy()
             df_full = df_full.dropna(subset=['fitzpatrick_scale', 'malignant']).copy()
             
-            # Split data
-            train_df, temp_df = train_test_split(df_full, train_size=train_split, random_state=seed, stratify=df_full['malignant'])
+            # Create combined stratification variable (malignant × fitzpatrick)
+            # This ensures balanced splits across BOTH binary label AND skin type
+            df_full['stratify_col'] = df_full['malignant'].astype(str) + '_' + df_full['fitzpatrick_scale'].astype(str)
+            
+            # Split data with combined stratification
+            train_df, temp_df = train_test_split(df_full, train_size=train_split, random_state=seed, stratify=df_full['stratify_col'])
             val_size_adjusted = val_split / (val_split + test_split)
-            val_df, test_df = train_test_split(temp_df, train_size=val_size_adjusted, random_state=seed, stratify=temp_df['malignant'])
+            val_df, test_df = train_test_split(temp_df, train_size=val_size_adjusted, random_state=seed, stratify=temp_df['stratify_col'])
+            
+            # Drop helper column
+            train_df = train_df.drop(columns=['stratify_col'])
+            val_df = val_df.drop(columns=['stratify_col'])
+            test_df = test_df.drop(columns=['stratify_col'])
             
             # Select appropriate split
             if split == 'train':

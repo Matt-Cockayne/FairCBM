@@ -8,11 +8,22 @@
 #SBATCH --gres=gpu:1
 #SBATCH --partition=gpu
 
-# Single Fairness-Aware CBM Experiment for Testing
-# Use this to verify everything works before launching 100-run batch
+# Single Experiment for Testing
+# Use this to verify everything works before launching multi-run batch
+#
+# Model Types Available:
+#   direct                - Direct classifier (no CBM)
+#   standard_cbm          - Standard CBM (no fairness, no curriculum)
+#   fair_standard_cbm     - Fair Standard CBM (fairness, no curriculum)
+#   curriculum_cbm        - Old concept difficulty curriculum (no fairness)
+#   fair_curriculum_cbm   - NEW 4-phase fairness-first curriculum
+#
+# Usage:
+#   sbatch slurm/run_single_experiment.slurm [model_type] [backbone] [seed]
+#   sbatch slurm/run_single_experiment.slurm fair_curriculum_cbm swin 42
 
 echo "=========================================="
-echo "FAIRNESS-AWARE CBM SINGLE TEST"
+echo "SINGLE MODEL TEST"
 echo "=========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
