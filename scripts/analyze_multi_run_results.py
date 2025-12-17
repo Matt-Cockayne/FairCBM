@@ -75,8 +75,8 @@ def load_run_results(results_dir, model_type, n_runs=100):
                         'run_id': run_id,
                         'job_dir': multi_run_dir.name,
                         'model_type': model_type,
-                        **test_results['standard_metrics'],
-                        **flatten_fairness_metrics(test_results.get('fairness_metrics', {}))
+                        **test_results['binary_metrics'],
+                        **flatten_fairness_metrics(test_results.get('binary_fairness', {}))
                     })
                     runs_found += 1
             except (json.JSONDecodeError, KeyError) as e:
@@ -258,7 +258,7 @@ def plot_metric_distributions(all_results_df, metrics, save_dir):
     
     model_types = sorted(all_results_df['model_type'].unique())
     colors = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
-              'fair_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+              'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
     
     for idx, metric in enumerate(available_metrics):
         ax = axes[idx]
@@ -305,7 +305,7 @@ def plot_fairness_impact_comparison(all_results_df, save_dir):
     # Define comparisons: baseline -> fair version
     comparisons = [
         ('curriculum_cbm', 'fair_curriculum_cbm', 'Fair Curriculum CBM - Curriculum CBM'),
-        ('standard_cbm', 'fair_cbm', 'Fair CBM - Standard CBM')
+        ('standard_cbm', 'fair_curriculum_cbm', 'Fair Curriculum CBM - Standard CBM')
     ]
     
     # Metrics to compare (metric, direction)
@@ -447,88 +447,84 @@ def generate_latex_table(summary_table_df, save_path):
 
 def plot_per_fitzpatrick_performance(all_results_df, save_dir):
     """Plot performance metrics for each Fitzpatrick skin type across all models."""
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
     
     model_types = sorted(all_results_df['model_type'].unique())
     colors = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4', 
-              'fair_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
-    fitz_types = [f'Fitz-{i}' for i in range(1, 7)]
+              'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+    model_labels = {'direct': 'Direct', 'standard_cbm': 'Standard CBM', 'curriculum_cbm': 'Curriculum CBM',
+                   'fair_standard_cbm': 'Fair Standard CBM', 'fair_curriculum_cbm': 'Fair Curriculum CBM'}
+    fitz_types = [f'Type {i}' for i in range(1, 7)]
     x = np.arange(len(fitz_types))
-    width = 0.15
+    width = 0.14
     
     # F1 Score by Fitzpatrick Type
-    ax = axes[0, 0]
+    ax = axes[0]
     for i, model in enumerate(model_types):
         df = all_results_df[all_results_df['model_type'] == model]
         f1_means = [df[f'fitz_{j+1}_f1'].mean() for j in range(6)]
         f1_stds = [df[f'fitz_{j+1}_f1'].std() for j in range(6)]
-        ax.bar(x + i*width, f1_means, width, yerr=f1_stds, label=model, 
-               color=colors.get(model, 'gray'), alpha=0.8, capsize=3)
+        ax.bar(x + i*width, f1_means, width, yerr=f1_stds, 
+               color=colors.get(model, 'gray'), alpha=0.8, capsize=2, 
+               error_kw={'linewidth': 1, 'elinewidth': 0.8})
     
-    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
-    ax.set_ylabel('F1 Score', fontsize=12)
-    ax.set_title('F1 Score by Fitzpatrick Skin Type', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=11)
+    ax.set_ylabel('F1 Score', fontsize=11)
+    ax.set_title('(a) F1 Score', fontsize=12, fontweight='bold')
     ax.set_xticks(x + width * 2)
-    ax.set_xticklabels(fitz_types)
-    ax.legend(loc='lower right', fontsize=9)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_ylim(0, 1.0)
+    ax.set_xticklabels(fitz_types, fontsize=10)
+    ax.grid(axis='y', alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0, 1.15)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     
     # Precision by Fitzpatrick Type
-    ax = axes[0, 1]
+    ax = axes[1]
     for i, model in enumerate(model_types):
         df = all_results_df[all_results_df['model_type'] == model]
         prec_means = [df[f'fitz_{j+1}_precision'].mean() for j in range(6)]
         prec_stds = [df[f'fitz_{j+1}_precision'].std() for j in range(6)]
-        ax.bar(x + i*width, prec_means, width, yerr=prec_stds, label=model,
-               color=colors.get(model, 'gray'), alpha=0.8, capsize=3)
+        ax.bar(x + i*width, prec_means, width, yerr=prec_stds,
+               color=colors.get(model, 'gray'), alpha=0.8, capsize=2,
+               error_kw={'linewidth': 1, 'elinewidth': 0.8})
     
-    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
-    ax.set_ylabel('Precision', fontsize=12)
-    ax.set_title('Precision by Fitzpatrick Skin Type', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=11)
+    ax.set_ylabel('Precision', fontsize=11)
+    ax.set_title('(b) Precision', fontsize=12, fontweight='bold')
     ax.set_xticks(x + width * 2)
-    ax.set_xticklabels(fitz_types)
-    ax.legend(loc='lower right', fontsize=9)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_ylim(0, 1.0)
+    ax.set_xticklabels(fitz_types, fontsize=10)
+    ax.grid(axis='y', alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0, 1.15)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     
     # Recall by Fitzpatrick Type
-    ax = axes[1, 0]
+    ax = axes[2]
     for i, model in enumerate(model_types):
         df = all_results_df[all_results_df['model_type'] == model]
         rec_means = [df[f'fitz_{j+1}_recall'].mean() for j in range(6)]
         rec_stds = [df[f'fitz_{j+1}_recall'].std() for j in range(6)]
-        ax.bar(x + i*width, rec_means, width, yerr=rec_stds, label=model,
-               color=colors.get(model, 'gray'), alpha=0.8, capsize=3)
+        ax.bar(x + i*width, rec_means, width, yerr=rec_stds,
+               color=colors.get(model, 'gray'), alpha=0.8, capsize=2,
+               error_kw={'linewidth': 1, 'elinewidth': 0.8})
     
-    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
-    ax.set_ylabel('Recall', fontsize=12)
-    ax.set_title('Recall by Fitzpatrick Skin Type', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=11)
+    ax.set_ylabel('Recall', fontsize=11)
+    ax.set_title('(c) Recall', fontsize=12, fontweight='bold')
     ax.set_xticks(x + width * 2)
-    ax.set_xticklabels(fitz_types)
-    ax.legend(loc='lower right', fontsize=9)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_ylim(0, 1.0)
+    ax.set_xticklabels(fitz_types, fontsize=10)
+    ax.grid(axis='y', alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0, 1.15)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     
-    # Accuracy by Fitzpatrick Type
-    ax = axes[1, 1]
-    for i, model in enumerate(model_types):
-        df = all_results_df[all_results_df['model_type'] == model]
-        acc_means = [df[f'fitz_{j+1}_accuracy'].mean() for j in range(6)]
-        acc_stds = [df[f'fitz_{j+1}_accuracy'].std() for j in range(6)]
-        ax.bar(x + i*width, acc_means, width, yerr=acc_stds, label=model,
-               color=colors.get(model, 'gray'), alpha=0.8, capsize=3)
+    # Add single legend at the bottom
+    handles = [plt.Rectangle((0,0),1,1, fc=colors[m], alpha=0.8) for m in model_types]
+    labels = [model_labels[m] for m in model_types]
+    fig.legend(handles, labels, loc='lower center', ncol=5, fontsize=10, 
+              frameon=False, bbox_to_anchor=(0.5, -0.02))
     
-    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
-    ax.set_ylabel('Accuracy', fontsize=12)
-    ax.set_title('Accuracy by Fitzpatrick Skin Type', fontsize=14, fontweight='bold')
-    ax.set_xticks(x + width * 2)
-    ax.set_xticklabels(fitz_types)
-    ax.legend(loc='lower right', fontsize=9)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_ylim(0, 1.0)
-    
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
     plt.savefig(save_dir / 'per_fitzpatrick_performance.png', dpi=300, bbox_inches='tight')
     print(f"Saved per-Fitzpatrick performance to {save_dir / 'per_fitzpatrick_performance.png'}")
 
@@ -540,9 +536,11 @@ def plot_fitzpatrick_trends(all_results_df, save_dir):
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     
     colors = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
-              'fair_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+              'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
     markers = {'direct': 'o', 'standard_cbm': 's', 'curriculum_cbm': '^',
-               'fair_cbm': 'D', 'fair_curriculum_cbm': 'v'}
+               'fair_standard_cbm': 'D', 'fair_curriculum_cbm': 'v'}
+    model_labels = {'direct': 'Direct', 'standard_cbm': 'Standard CBM', 'curriculum_cbm': 'Curriculum CBM',
+                   'fair_standard_cbm': 'Fair Standard CBM', 'fair_curriculum_cbm': 'Fair Curriculum CBM'}
     
     # Plot: All models F1 trends
     fitz_types = list(range(1, 7))
@@ -553,21 +551,26 @@ def plot_fitzpatrick_trends(all_results_df, save_dir):
         stds = [df[f'fitz_{i}_f1'].std() for i in fitz_types]
         
         ax.plot(fitz_types, means, marker=markers.get(model, 'o'),
-               color=colors.get(model, 'gray'), label=model, linewidth=2,
-               markersize=8, alpha=0.8)
+               color=colors.get(model, 'gray'), label=model_labels.get(model, model), 
+               linewidth=2.5, markersize=8, alpha=0.85)
         ax.fill_between(fitz_types, 
                        [m - s for m, s in zip(means, stds)],
                        [m + s for m, s in zip(means, stds)],
-                       color=colors.get(model, 'gray'), alpha=0.2)
+                       color=colors.get(model, 'gray'), alpha=0.15)
+    
+    # Add clinical threshold line
+    ax.axhline(y=0.7, color='gray', linestyle='--', linewidth=2, alpha=0.6, label='Clinical Threshold (0.70)', zorder=1)
     
     ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
-    ax.set_ylabel('Mean F1 Score', fontsize=12)
-    ax.set_title('F1 Performance Across Fitzpatrick Types', fontsize=14, fontweight='bold')
+    ax.set_ylabel('F1 Score', fontsize=12)
+    ax.set_title('Performance Trends Across Skin Types', fontsize=13, fontweight='bold')
     ax.set_xticks(fitz_types)
-    ax.set_xticklabels([f'Type {i}' for i in fitz_types])
-    ax.legend(loc='best', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(0, 1.0)
+    ax.set_xticklabels([f'Type {i}' for i in fitz_types], fontsize=11)
+    ax.legend(loc='lower left', fontsize=10, frameon=False)
+    ax.grid(True, alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0.2, 1.0)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     
     plt.tight_layout()
     plt.savefig(save_dir / 'fitzpatrick_trends.png', dpi=300, bbox_inches='tight')
@@ -576,8 +579,12 @@ def plot_fitzpatrick_trends(all_results_df, save_dir):
 
 def plot_fairness_improvement_heatmap(all_results_df, save_dir):
     """Heatmap showing per-Fitzpatrick F1 scores for each model."""
-    model_types = sorted(all_results_df['model_type'].unique())
-    fitz_types = [f'Fitz-{i}' for i in range(1, 7)]
+    # Specify order: baselines first, then fair variants
+    model_types = ['direct', 'standard_cbm', 'fair_standard_cbm', 'curriculum_cbm', 'fair_curriculum_cbm']
+    model_labels = {'direct': 'Direct', 'standard_cbm': 'Standard CBM', 
+                   'curriculum_cbm': 'Curriculum CBM', 'fair_standard_cbm': 'Fair Standard CBM',
+                   'fair_curriculum_cbm': 'Fair Curriculum CBM'}
+    fitz_types = [f'Type {i}' for i in range(1, 7)]
     
     # Create matrix of mean F1 scores
     f1_matrix = np.zeros((len(model_types), 6))
@@ -587,30 +594,40 @@ def plot_fairness_improvement_heatmap(all_results_df, save_dir):
             f1_matrix[i, j] = df[f'fitz_{j+1}_f1'].mean()
     
     fig, ax = plt.subplots(figsize=(10, 8))
-    im = ax.imshow(f1_matrix, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1.0)
+    # Use viridis colormap - perceptually uniform, colorblind-friendly
+    im = ax.imshow(f1_matrix, cmap='viridis', aspect='auto', vmin=0.25, vmax=0.80)
     
     # Set ticks and labels
     ax.set_xticks(np.arange(6))
     ax.set_yticks(np.arange(len(model_types)))
-    ax.set_xticklabels(fitz_types)
-    ax.set_yticklabels(model_types)
+    ax.set_xticklabels(fitz_types, fontsize=11)
+    ax.set_yticklabels([model_labels.get(m, m) for m in model_types], fontsize=11)
     
     # Rotate x labels
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    plt.setp(ax.get_xticklabels(), rotation=0)
     
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Mean F1 Score', rotation=270, labelpad=20, fontsize=12)
+    # Add colorbar with better styling
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('F1 Score', rotation=270, labelpad=20, fontsize=12)
+    cbar.ax.tick_params(labelsize=10)
     
-    # Add text annotations
+    # Add text annotations with consistent black font
     for i in range(len(model_types)):
         for j in range(6):
-            text = ax.text(j, i, f'{f1_matrix[i, j]:.3f}',
-                          ha="center", va="center", color="black", fontsize=10, fontweight='bold')
+            val = f1_matrix[i, j]
+            text = ax.text(j, i, f'{val:.3f}',
+                          ha="center", va="center", color='black', 
+                          fontsize=10, fontweight='bold')
     
-    ax.set_title('Mean F1 Score by Model and Fitzpatrick Type', fontsize=14, fontweight='bold')
+    ax.set_title('F1 Score by Model and Fitzpatrick Type', fontsize=13, fontweight='bold', pad=15)
     ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12)
     ax.set_ylabel('Model Type', fontsize=12)
+    
+    # Remove spines for cleaner look
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
     
     plt.tight_layout()
     plt.savefig(save_dir / 'fairness_improvement_heatmap.png', dpi=300, bbox_inches='tight')
@@ -671,7 +688,7 @@ def compute_group_disparity_ratios(history_dict, metric_name, group_key):
     For zero reference values, uses absolute differences instead of ratios.
     """
     test_data = history_dict.get('test', [{}])[-1]  # Get last epoch test results
-    fairness_metrics = test_data.get('fairness_metrics', {})
+    fairness_metrics = test_data.get('binary_fairness', {})
     
     if metric_name == 'fpr':
         group_values = fairness_metrics.get('equalized_odds', {}).get('group_fpr', {})
@@ -768,7 +785,7 @@ def plot_disparity_metrics(all_results_df, results_dir, save_dir):
         y = np.arange(len(fitz_labels))
         height = 0.15
         colors_map = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
-                      'fair_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+                      'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
         
         # Add fairness threshold zones (Aequitas 80% rule: 0.8 to 1.25)
         ax.axvspan(0.8, 1.25, alpha=0.2, color='green', zorder=0, label='Fair (80% rule)')
@@ -791,10 +808,10 @@ def plot_disparity_metrics(all_results_df, results_dir, save_dir):
                     stds.append(0)
             
             offset = height * (model_idx - len(model_types)/2 + 0.5)
-            bars = ax.barh(y + offset, means, height, xerr=stds, 
+            bars = ax.barh(y + offset, means, height, 
                           label=model.replace('_', ' ').title(),
                           color=colors_map.get(model, '#gray'),
-                          alpha=0.8, capsize=3, edgecolor='black', linewidth=0.5)
+                          alpha=0.8, edgecolor='black', linewidth=0.5)
             
             # Color bars based on fairness (in 0.8-1.25 range)
             for bar, mean_val in zip(bars, means):
@@ -870,7 +887,7 @@ def plot_impact_metrics(all_results_df, results_dir, save_dir):
         y = np.arange(len(fitz_labels))
         height = 0.15
         colors_map = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
-                      'fair_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+                      'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
         
         # Add fairness threshold zones (Aequitas 80% rule: 0.8 to 1.25)
         ax.axvspan(0.8, 1.25, alpha=0.2, color='green', zorder=0, label='Fair (80% rule)')
@@ -893,10 +910,10 @@ def plot_impact_metrics(all_results_df, results_dir, save_dir):
                     stds.append(0)
             
             offset = height * (model_idx - len(model_types)/2 + 0.5)
-            bars = ax.barh(y + offset, means, height, xerr=stds, 
+            bars = ax.barh(y + offset, means, height, 
                           label=model.replace('_', ' ').title(),
                           color=colors_map.get(model, '#gray'),
-                          alpha=0.8, capsize=3, edgecolor='black', linewidth=0.5)
+                          alpha=0.8, edgecolor='black', linewidth=0.5)
             
             # Color bars based on fairness (in 0.8-1.25 range)
             for bar, mean_val in zip(bars, means):
@@ -907,9 +924,6 @@ def plot_impact_metrics(all_results_df, results_dir, save_dir):
                     else:
                         bar.set_edgecolor('darkred')
                         bar.set_linewidth(2)
-        
-        # Add reference group to title (always Type 3)
-        title_with_ref = f'{title}\n(Reference: Type 3)'
         
         # Add reference group to title (always Type 3)
         title_with_ref = f'{title}\n(Reference: Type 3)'
@@ -1012,6 +1026,395 @@ def plot_calibration_metrics(all_results_df, results_dir, save_dir):
     print(f"Saved calibration fairness metrics to {save_dir / 'calibration_fairness_metrics.png'}")
 
 
+def plot_training_curves(all_results_df, results_dir, save_dir):
+    """Plot training and validation curves across epochs for all models."""
+    model_types = sorted(all_results_df['model_type'].unique())
+    colors = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
+              'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+    
+    # Collect training curves from all runs
+    model_curves = {model: {'train_f1': [], 'val_f1': [], 'train_loss': []} 
+                    for model in model_types}
+    
+    for _, row in all_results_df.iterrows():
+        model = row['model_type']
+        run_id = row['run_id']
+        job_dir = row['job_dir']
+        
+        history_path = results_dir / job_dir / f"run_{run_id}" / model / "history.json"
+        if history_path.exists():
+            import json
+            with open(history_path, 'r') as f:
+                history = json.load(f)
+            
+            # Extract training metrics
+            train_f1 = [epoch.get('metrics', {}).get('f1', 0) for epoch in history.get('train', [])]
+            val_f1 = [epoch.get('binary_metrics', {}).get('f1', 0) for epoch in history.get('val', [])]
+            
+            # Extract losses (varies by model type)
+            if model == 'direct':
+                train_loss = [epoch.get('loss', 0) for epoch in history.get('train', [])]
+            else:
+                train_loss = [epoch.get('total_loss', 0) for epoch in history.get('train', [])]
+            
+            # Validation loss not tracked in history - skip val_loss plotting
+            
+            if train_f1:
+                model_curves[model]['train_f1'].append(train_f1)
+                model_curves[model]['val_f1'].append(val_f1)
+                model_curves[model]['train_loss'].append(train_loss)
+    
+    # Plot curves (only 3 subplots since val loss not tracked)
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+    
+    # Training F1
+    ax = axes[0]
+    for model in model_types:
+        if model_curves[model]['train_f1']:
+            curves = np.array(model_curves[model]['train_f1'])
+            epochs = np.arange(curves.shape[1])
+            mean_curve = np.mean(curves, axis=0)
+            std_curve = np.std(curves, axis=0)
+            ax.plot(epochs, mean_curve, color=colors.get(model, '#333333'), linewidth=2)
+            ax.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, 
+                          alpha=0.2, color=colors.get(model, '#333333'))
+    ax.set_xlabel('Epoch', fontsize=11)
+    ax.set_ylabel('Training F1 Score', fontsize=11)
+    ax.set_title('(a) Training F1', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0, 1.0)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Validation F1
+    ax = axes[1]
+    for model in model_types:
+        if model_curves[model]['val_f1']:
+            curves = np.array(model_curves[model]['val_f1'])
+            epochs = np.arange(curves.shape[1])
+            mean_curve = np.mean(curves, axis=0)
+            std_curve = np.std(curves, axis=0)
+            ax.plot(epochs, mean_curve, color=colors.get(model, '#333333'), linewidth=2)
+            ax.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, 
+                          alpha=0.2, color=colors.get(model, '#333333'))
+    ax.set_xlabel('Epoch', fontsize=11)
+    ax.set_ylabel('Validation F1 Score', fontsize=11)
+    ax.set_title('(b) Validation F1', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3, linewidth=0.5)
+    ax.set_ylim(0, 1.0)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Training Loss
+    ax = axes[2]
+    for model in model_types:
+        if model_curves[model]['train_loss']:
+            curves = np.array(model_curves[model]['train_loss'])
+            epochs = np.arange(curves.shape[1])
+            mean_curve = np.mean(curves, axis=0)
+            std_curve = np.std(curves, axis=0)
+            ax.plot(epochs, mean_curve, color=colors.get(model, '#333333'), linewidth=2)
+            ax.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, 
+                          alpha=0.2, color=colors.get(model, '#333333'))
+    ax.set_xlabel('Epoch', fontsize=11)
+    ax.set_ylabel('Training Loss', fontsize=11)
+    ax.set_title('(c) Training Loss', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3, linewidth=0.5)
+    ax.set_yscale('log')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Add single legend at bottom
+    model_labels = {'direct': 'Direct', 'standard_cbm': 'Standard CBM', 'curriculum_cbm': 'Curriculum CBM',
+                   'fair_standard_cbm': 'Fair Standard CBM', 'fair_curriculum_cbm': 'Fair Curriculum CBM'}
+    handles = [plt.Line2D([0], [0], color=colors.get(m, '#333333'), linewidth=2) for m in model_types]
+    labels = [model_labels.get(m, m) for m in model_types]
+    fig.legend(handles, labels, loc='lower center', ncol=5, fontsize=10, 
+              frameon=False, bbox_to_anchor=(0.5, -0.02))
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    plt.savefig(save_dir / 'training_curves.png', dpi=300, bbox_inches='tight')
+    print(f"Saved training curves to {save_dir / 'training_curves.png'}")
+
+
+def plot_concept_performance(all_results_df, results_dir, save_dir):
+    """Plot concept prediction accuracy and fairness for CBM models."""
+    cbm_models = ['standard_cbm', 'curriculum_cbm', 'fair_curriculum_cbm']
+    colors = {'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4',
+              'fair_curriculum_cbm': '#d62728'}
+    
+    # Collect concept metrics
+    model_concept_acc = {model: [] for model in cbm_models}
+    model_concept_auc = {model: [] for model in cbm_models}
+    
+    for _, row in all_results_df.iterrows():
+        model = row['model_type']
+        if model not in cbm_models:
+            continue
+        
+        run_id = row['run_id']
+        job_dir = row['job_dir']
+        
+        history_path = results_dir / job_dir / f"run_{run_id}" / model / "history.json"
+        if history_path.exists():
+            import json
+            with open(history_path, 'r') as f:
+                history = json.load(f)
+            
+            test_data = history.get('test', [{}])[-1]
+            if 'concept_metrics' in test_data:
+                cm = test_data['concept_metrics']
+                model_concept_acc[model].append(cm.get('avg_concept_accuracy', 0))
+                model_concept_auc[model].append(cm.get('avg_concept_f1', 0))
+    
+    # Plot
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Concept Accuracy
+    ax = axes[0]
+    models_with_data = [m for m in cbm_models if model_concept_acc[m]]
+    if models_with_data:
+        positions = np.arange(len(models_with_data))
+        means = [np.mean(model_concept_acc[m]) for m in models_with_data]
+        stds = [np.std(model_concept_acc[m]) for m in models_with_data]
+        bars = ax.bar(positions, means, yerr=stds, capsize=5, 
+                     color=[colors.get(m, '#333333') for m in models_with_data],
+                     alpha=0.7, edgecolor='black', linewidth=2)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(models_with_data, rotation=45, ha='right')
+        ax.set_ylabel('Average Concept Accuracy', fontsize=12)
+        ax.set_title('Concept Prediction Accuracy', fontsize=14, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_ylim(0, 1.0)
+        
+        # Add value labels
+        for bar, mean, std in zip(bars, means, stds):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + std + 0.02,
+                   f'{mean:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    # Concept AUC
+    ax = axes[1]
+    if models_with_data:
+        positions = np.arange(len(models_with_data))
+        means = [np.mean(model_concept_auc[m]) for m in models_with_data]
+        stds = [np.std(model_concept_auc[m]) for m in models_with_data]
+        bars = ax.bar(positions, means, yerr=stds, capsize=5,
+                     color=[colors.get(m, '#333333') for m in models_with_data],
+                     alpha=0.7, edgecolor='black', linewidth=2)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(models_with_data, rotation=45, ha='right')
+        ax.set_ylabel('Average Concept F1 Score', fontsize=12)
+        ax.set_title('Concept Prediction F1', fontsize=14, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_ylim(0, 1.0)
+        
+        # Add value labels
+        for bar, mean, std in zip(bars, means, stds):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + std + 0.02,
+                   f'{mean:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    plt.tight_layout()
+    plt.savefig(save_dir / 'concept_performance.png', dpi=300, bbox_inches='tight')
+    print(f"Saved concept performance to {save_dir / 'concept_performance.png'}")
+
+
+def plot_fairness_over_training(all_results_df, results_dir, save_dir):
+    """Plot how fairness metrics and adversarial loss evolve during training for fair models."""
+    fair_models = ['fair_standard_cbm', 'fair_curriculum_cbm']
+    colors = {'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+    
+    # Collect fairness curves and adversarial metrics
+    model_curves = {model: {'performance_gap': [], 'demographic_parity': [], 
+                           'equalized_odds': [], 'adversarial_loss': [], 'adversarial_lambda': []} 
+                   for model in fair_models}
+    
+    for _, row in all_results_df.iterrows():
+        model_type = row['model_type']
+        if model_type not in fair_models:
+            continue
+        
+        run_id = row['run_id']
+        job_dir = row['job_dir']
+        
+        history_path = results_dir / job_dir / f"run_{run_id}" / model_type / "history.json"
+        if not history_path.exists():
+            continue
+        
+        try:
+            import json
+            with open(history_path) as f:
+                history = json.load(f)
+            
+            # Extract validation fairness metrics
+            val_history = history.get('val', [])
+            epochs = [entry['epoch'] for entry in val_history]
+            
+            # Performance gap from binary_fairness
+            perf_gaps = []
+            for entry in val_history:
+                fairness = entry.get('binary_fairness', {})
+                # Use pre-computed performance_gap from worst_group
+                perf_gap = fairness.get('worst_group', {}).get('performance_gap', np.nan)
+                perf_gaps.append(perf_gap if not isinstance(perf_gap, dict) else np.nan)
+            
+            # Other metrics (handle both scalar and dict values)
+            dp_values = []
+            for entry in val_history:
+                dp = entry.get('binary_fairness', {}).get('demographic_parity', np.nan)
+                # If it's a dict, get max_disparity
+                if isinstance(dp, dict):
+                    dp = dp.get('max_disparity', np.nan)
+                dp_values.append(dp if not isinstance(dp, dict) else np.nan)
+            
+            eo_values = []
+            for entry in val_history:
+                eo = entry.get('binary_fairness', {}).get('equalized_odds', np.nan)
+                # If it's a dict, get max_disparity
+                if isinstance(eo, dict):
+                    eo = eo.get('max_disparity', np.nan)
+                eo_values.append(eo if not isinstance(eo, dict) else np.nan)
+            
+            # Extract training adversarial metrics
+            train_history = history.get('train', [])
+            adv_loss = [entry.get('adversarial_loss', 0) for entry in train_history]
+            adv_lambda = [entry.get('adversarial_lambda', 0) for entry in train_history]
+            
+            if len(epochs) > 0:
+                model_curves[model_type]['performance_gap'].append(np.array(perf_gaps))
+                model_curves[model_type]['demographic_parity'].append(np.array(dp_values))
+                model_curves[model_type]['equalized_odds'].append(np.array(eo_values))
+                model_curves[model_type]['adversarial_loss'].append(np.array(adv_loss))
+                model_curves[model_type]['adversarial_lambda'].append(np.array(adv_lambda))
+        except Exception as e:
+            print(f"Warning: Could not load history for {model_type} run {run_id}: {e}")
+            continue
+    
+    # Plot
+    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    
+    # Fairness metrics
+    metric_names = ['performance_gap', 'demographic_parity', 'equalized_odds']
+    titles = ['(a) Performance Gap', '(b) Demographic Parity', '(c) Equalized Odds']
+    ylabels = ['F1 Range', 'Max Disparity', 'Max Disparity']
+    
+    for idx, (metric, title, ylabel) in enumerate(zip(metric_names, titles, ylabels)):
+        ax = axes[0, idx]
+        for model in fair_models:
+            if not model_curves[model][metric]:
+                continue
+            
+            # Stack all runs
+            all_curves = model_curves[model][metric]
+            max_len = max(len(c) for c in all_curves)
+            
+            # Pad and average
+            padded = []
+            for curve in all_curves:
+                if len(curve) < max_len:
+                    padded_curve = np.full(max_len, np.nan)
+                    padded_curve[:len(curve)] = curve
+                else:
+                    padded_curve = curve
+                padded.append(padded_curve)
+            
+            stacked = np.array(padded)
+            mean_curve = np.nanmean(stacked, axis=0)
+            std_curve = np.nanstd(stacked, axis=0)
+            epochs = np.arange(len(mean_curve))
+            
+            ax.plot(epochs, mean_curve, color=colors[model], linewidth=2)
+            ax.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve,
+                          alpha=0.15, color=colors[model])
+        
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        if idx == 0:  # Only first subplot gets legend
+            model_labels = {'fair_standard_cbm': 'Fair Standard CBM', 
+                          'fair_curriculum_cbm': 'Fair Curriculum CBM'}
+            ax.legend([model_labels[m] for m in fair_models], loc='best', fontsize=9, frameon=False)
+        ax.grid(True, alpha=0.3, linewidth=0.5)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+    
+    # Adversarial discriminator metrics
+    adv_metric_names = ['adversarial_loss', 'adversarial_lambda']
+    adv_titles = ['(d) Adversarial Loss', '(e) Adversarial Lambda']
+    adv_ylabels = ['Cross-Entropy Loss', 'Lambda Weight']
+    
+    for idx, (metric, title, ylabel) in enumerate(zip(adv_metric_names, adv_titles, adv_ylabels)):
+        ax = axes[1, idx]
+        for model in fair_models:
+            if not model_curves[model][metric]:
+                continue
+            
+            # Stack all runs
+            all_curves = model_curves[model][metric]
+            max_len = max(len(c) for c in all_curves)
+            
+            # Pad and average
+            padded = []
+            for curve in all_curves:
+                if len(curve) < max_len:
+                    padded_curve = np.full(max_len, np.nan)
+                    padded_curve[:len(curve)] = curve
+                else:
+                    padded_curve = curve
+                padded.append(padded_curve)
+            
+            stacked = np.array(padded)
+            mean_curve = np.nanmean(stacked, axis=0)
+            std_curve = np.nanstd(stacked, axis=0)
+            epochs = np.arange(len(mean_curve))
+            
+            ax.plot(epochs, mean_curve, color=colors[model], linewidth=2)
+            ax.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve,
+                          alpha=0.15, color=colors[model])
+        
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3, linewidth=0.5)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        
+        # Add phase markers for lambda plot
+        if metric == 'adversarial_lambda':
+            ax.axvline(x=25, color='gray', linestyle='--', alpha=0.5)
+            ax.axvline(x=50, color='gray', linestyle='--', alpha=0.6)
+            ax.axvline(x=75, color='gray', linestyle='--', alpha=0.7)
+            ax.text(12, ax.get_ylim()[1]*0.85, 'Phase 1', ha='center', fontsize=8, style='italic', alpha=0.7)
+            ax.text(37, ax.get_ylim()[1]*0.85, 'Phase 2', ha='center', fontsize=8, style='italic', alpha=0.7)
+            ax.text(62, ax.get_ylim()[1]*0.85, 'Phase 3', ha='center', fontsize=8, style='italic', alpha=0.7)
+            ax.text(87, ax.get_ylim()[1]*0.85, 'Phase 4', ha='center', fontsize=8, style='italic', alpha=0.7)
+    
+    # Add explanation text to bottom-right subplot
+    ax = axes[1, 2]
+    ax.axis('off')
+    explanation = (
+        "Adversarial Debiasing Mechanism\n\n"
+        "• Discriminator predicts Fitzpatrick type\n"
+        "  from concept representations\n"
+        "• Gradient reversal prevents\n"
+        "  demographic encoding\n"
+        "• Loss ~1.8 = random (success)\n"
+        "• Loss ~1.0 = partial debiasing\n\n"
+        "Fair Curriculum CBM introduces\n"
+        "λ gradually in Phase 3-4 (0→0.01)"
+    )
+    ax.text(0.1, 0.5, explanation, transform=ax.transAxes, fontsize=10,
+           verticalalignment='center',
+           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.2, pad=1))
+    
+    plt.suptitle('Fairness Metrics and Adversarial Debiasing Over Training', 
+                fontsize=14, fontweight='bold', y=0.99)
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
+    plt.savefig(save_dir / 'fairness_over_training.png', dpi=300, bbox_inches='tight')
+    print(f"Saved fairness evolution to {save_dir / 'fairness_over_training.png'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Analyze multi-run fairness experiments')
     
@@ -1045,7 +1448,7 @@ def main():
     print("")
     
     # Model types
-    model_types = ['direct', 'standard_cbm', 'curriculum_cbm', 'fair_cbm', 'fair_curriculum_cbm']
+    model_types = ['direct', 'standard_cbm', 'curriculum_cbm', 'fair_standard_cbm', 'fair_curriculum_cbm']
     
     # Load results for all models
     print("Loading results...")
@@ -1143,41 +1546,30 @@ def main():
     test_results_df = pd.DataFrame(test_results).T
     test_results_df.to_csv(analysis_dir / 'statistical_tests.csv')
     
-    # Generate visualizations
+    # Generate core paper visualizations
     print("\n" + "="*80)
-    print("GENERATING VISUALIZATIONS")
+    print("GENERATING CORE PAPER VISUALIZATIONS")
     print("="*80)
     
-    # Key metrics for visualization
-    viz_metrics = ['f1', 'accuracy', 'performance_gap', 'worst_group_f1', 
-                   'demographic_parity', 'equalized_odds_diff', 'calibration_disparity']
-    
-    plot_metric_distributions(all_results_df, viz_metrics, analysis_dir)
-    plot_fairness_impact_comparison(all_results_df, analysis_dir)
-    
-    # Individual metric comparisons
-    for metric in ['f1', 'performance_gap', 'worst_group_f1', 'demographic_parity']:
-        if metric in all_results_df.columns and all_results_df[metric].notna().sum() > 0:
-            # Check if metric exists in summary_dict for at least one model
-            if any(metric in summary_dict.get(m, {}) for m in summary_dict):
-                plot_pairwise_comparison(summary_dict, metric, analysis_dir)
-    
-    # Per-Fitzpatrick visualizations
-    print("\n" + "="*80)
-    print("GENERATING PER-FITZPATRICK VISUALIZATIONS")
-    print("="*80)
-    fitzpatrick_summary = create_fitzpatrick_summary_table(all_results_df, analysis_dir)
+    # Core plots for paper
+    print("\n1. Per-Fitzpatrick Performance (F1, Precision, Recall)...")
     plot_per_fitzpatrick_performance(all_results_df, analysis_dir)
+    
+    print("\n2. Fitzpatrick Trends (F1 across skin types)...")
     plot_fitzpatrick_trends(all_results_df, analysis_dir)
+    
+    print("\n3. Training Curves (Loss and F1 over epochs)...")
+    plot_training_curves(all_results_df, results_dir, analysis_dir)
+    
+    print("\n4. Fairness Improvement Heatmap...")
     plot_fairness_improvement_heatmap(all_results_df, analysis_dir)
     
-    # Aequitas fairness audit plots
-    print("\n" + "="*80)
-    print("GENERATING AEQUITAS FAIRNESS AUDIT PLOTS")
-    print("="*80)
-    plot_disparity_metrics(all_results_df, results_dir, analysis_dir)
-    plot_impact_metrics(all_results_df, results_dir, analysis_dir)
-    # plot_calibration_metrics(all_results_df, results_dir, analysis_dir)  # TODO: Fix calibration plot
+    print("\n5. Fairness Evolution and Adversarial Debiasing...")
+    plot_fairness_over_training(all_results_df, results_dir, analysis_dir)
+    
+    # Generate Fitzpatrick summary table (CSV + LaTeX)
+    print("\n6. Fitzpatrick Summary Table (CSV + LaTeX)...")
+    fitzpatrick_summary = create_fitzpatrick_summary_table(all_results_df, analysis_dir)
     
     # Save raw results
     all_results_df.to_csv(analysis_dir / 'all_results.csv', index=False)
