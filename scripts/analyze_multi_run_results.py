@@ -165,6 +165,66 @@ def compute_summary_statistics(df, metrics):
             'ci_upper': ci[1]
         }
     
+    # Recalculate worst_group_f1 and performance_gap correctly:
+    # - Identify which Fitzpatrick type has the worst mean F1 (across all runs)
+    # - Use that group's mean and std for worst_group_f1
+    fitz_cols = [f'fitz_{i}_f1' for i in range(1, 7)]
+    if all(col in df.columns for col in fitz_cols):
+        # Calculate mean F1 for each Fitzpatrick type across all runs
+        group_means = {}
+        group_stds = {}
+        for col in fitz_cols:
+            values = df[col].values
+            values = values[np.isfinite(values)]
+            if len(values) > 0:
+                group_means[col] = np.mean(values)
+                group_stds[col] = np.std(values, ddof=1) if len(values) > 1 else 0.0
+        
+        if group_means:
+            # Find worst and best performing groups (by mean F1)
+            worst_col = min(group_means, key=group_means.get)
+            best_col = max(group_means, key=group_means.get)
+            
+            # Get the actual per-run values for worst and best groups
+            worst_group_values = df[worst_col].values
+            worst_group_values = worst_group_values[np.isfinite(worst_group_values)]
+            
+            best_group_values = df[best_col].values
+            best_group_values = best_group_values[np.isfinite(best_group_values)]
+            
+            if len(worst_group_values) > 0:
+                summary['worst_group_f1'] = {
+                    'mean': group_means[worst_col],
+                    'std': group_stds[worst_col],
+                    'median': np.median(worst_group_values),
+                    'min': np.min(worst_group_values),
+                    'max': np.max(worst_group_values),
+                    'ci_lower': np.percentile(worst_group_values, 2.5),
+                    'ci_upper': np.percentile(worst_group_values, 97.5)
+                }
+            
+            if len(best_group_values) > 0:
+                summary['best_group_f1'] = {
+                    'mean': group_means[best_col],
+                    'std': group_stds[best_col],
+                    'median': np.median(best_group_values),
+                    'min': np.min(best_group_values),
+                    'max': np.max(best_group_values),
+                    'ci_lower': np.percentile(best_group_values, 2.5),
+                    'ci_upper': np.percentile(best_group_values, 97.5)
+                }
+                
+                # Performance gap is the difference between best and worst group means
+                summary['performance_gap'] = {
+                    'mean': group_means[best_col] - group_means[worst_col],
+                    'std': np.sqrt(group_stds[worst_col]**2 + group_stds[best_col]**2),  # Error propagation
+                    'median': summary['best_group_f1']['median'] - summary['worst_group_f1']['median'],
+                    'min': group_means[best_col] - group_means[worst_col],  # Single value
+                    'max': group_means[best_col] - group_means[worst_col],
+                    'ci_lower': group_means[best_col] - group_means[worst_col],
+                    'ci_upper': group_means[best_col] - group_means[worst_col]
+                }
+    
     return summary
 
 
@@ -445,6 +505,162 @@ def generate_latex_table(summary_table_df, save_path):
     print(f"Saved LaTeX table to {save_path}")
 
 
+def plot_main_results_figure(all_results_df, summary_dict, save_dir):
+    """
+    Create publication-quality 2-panel figure for main results:
+    Panel A: Per-Fitzpatrick F1 bar chart with significance markers
+    Panel B: Model comparison (Overall F1, Worst-Group F1, Performance Gap)
+    """
+    fig = plt.figure(figsize=(12, 4.8))
+    gs = fig.add_gridspec(1, 2, wspace=0.15)
+    axes = [fig.add_subplot(gs[0, i]) for i in range(2)]
+    
+    model_types = ['direct', 'standard_cbm', 'curriculum_cbm', 'fair_standard_cbm', 'fair_curriculum_cbm']
+    colors = {'direct': '#ff7f0e', 'standard_cbm': '#2ca02c', 'curriculum_cbm': '#1f77b4', 
+              'fair_standard_cbm': '#9467bd', 'fair_curriculum_cbm': '#d62728'}
+    model_labels = {'direct': 'Direct', 'standard_cbm': 'Standard CBM', 'curriculum_cbm': 'Curriculum CBM',
+                   'fair_standard_cbm': 'Fair Standard CBM', 'fair_curriculum_cbm': 'Fair Curriculum CBM'}
+    
+    # Show all models
+    key_models = model_types
+    
+    # ========== PANEL A: Per-Fitzpatrick F1 Bar Chart ==========
+    ax = axes[0]
+    fitz_types = [f'Type {i}' for i in range(1, 7)]
+    x = np.arange(len(fitz_types))
+    width = 0.15
+    
+    for i, model in enumerate(key_models):
+        model_df = all_results_df[all_results_df['model_type'] == model]
+        n_runs = len(model_df)
+        means = [model_df[f'fitz_{j}_f1'].mean() for j in range(1, 7)]
+        stds = [model_df[f'fitz_{j}_f1'].std() for j in range(1, 7)]
+        sems = [std / np.sqrt(n_runs) if n_runs > 0 else 0 for std in stds]  # Standard Error of Mean
+        
+        offset = (i - 2) * width  # Center around 0
+        bars = ax.bar(x + offset, means, width, label=model_labels[model], 
+                     color=colors[model], alpha=0.85, edgecolor='black', linewidth=0.8)
+        
+        # Add error bars (SEM)
+        ax.errorbar(x + offset, means, yerr=sems, fmt='none', ecolor='black', 
+                   capsize=2.5, capthick=0.8, alpha=0.6, linewidth=0.8)
+    
+    # Add significance markers for Fair Curriculum vs Curriculum
+    sig_markers = {1: '***', 4: '**', 5: '**'}  # Types 2, 5, 6
+    for fitz_idx, marker in sig_markers.items():
+        curriculum_mean = all_results_df[all_results_df['model_type'] == 'curriculum_cbm'][f'fitz_{fitz_idx+1}_f1'].mean()
+        fair_mean = all_results_df[all_results_df['model_type'] == 'fair_curriculum_cbm'][f'fitz_{fitz_idx+1}_f1'].mean()
+        max_height = max(curriculum_mean, fair_mean)
+        
+        ax.text(x[fitz_idx], max_height + 0.08, marker, ha='center', va='bottom', 
+               fontsize=14, fontweight='bold', color='#d62728')
+    
+    ax.set_xlabel('Fitzpatrick Skin Type', fontsize=12, fontweight='bold')
+    ax.set_ylabel('F1 Score', fontsize=12, fontweight='bold')
+    ax.set_title('(A) Targeted Equity: F1 by Skin Type', fontsize=13, fontweight='bold', pad=10)
+    ax.set_xticks(x)
+    ax.set_xticklabels(fitz_types, fontsize=11)
+    ax.grid(axis='y', alpha=0.3, linewidth=0.6, linestyle='--')
+    ax.set_ylim(0.15, 0.85)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_linewidth(1.2)
+    
+    # ========== PANEL B: Grouped Bar Chart - 3 Key Metrics ==========
+    ax = axes[1]
+    
+    metrics = ['f1', 'worst_group_f1', 'performance_gap']
+    metric_labels = ['Overall F1', 'Worst-Group F1', 'Performance Gap']
+    x_metrics = np.arange(len(metrics))
+    width_metric = 0.15
+    
+    for i, model in enumerate(key_models):
+        model_summary = summary_dict[model]
+        
+        # Get number of runs for this model to calculate SEM
+        model_df = all_results_df[all_results_df['model_type'] == model]
+        n_runs = len(model_df)
+        
+        # Get values (use actual values, no inversion)
+        values = [
+            model_summary['f1']['mean'],
+            model_summary['worst_group_f1']['mean'],
+            model_summary['performance_gap']['mean']
+        ]
+        # Use Standard Error of Mean (SEM) = std / sqrt(n) for more conservative error bars
+        errors = [
+            model_summary['f1']['std'] / np.sqrt(n_runs) if n_runs > 0 else 0,
+            model_summary['worst_group_f1']['std'] / np.sqrt(n_runs) if n_runs > 0 else 0,
+            model_summary['performance_gap']['std'] / np.sqrt(n_runs) if n_runs > 0 else 0
+        ]
+        
+        offset = (i - 2) * width_metric  # Center around 0
+        bars = ax.bar(x_metrics + offset, values, width_metric, label=model_labels[model],
+                     color=colors[model], alpha=0.85, edgecolor='black', linewidth=0.8)
+        
+        # Add error bars (SEM)
+        ax.errorbar(x_metrics + offset, values, yerr=errors, fmt='none', ecolor='black',
+                   capsize=2.5, capthick=0.8, alpha=0.6, linewidth=0.8)
+        
+        # Add value labels on bars for key models
+        if model in ['direct', 'curriculum_cbm', 'fair_curriculum_cbm']:
+            for j, (bar, val) in enumerate(zip(bars, values)):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + errors[j] + 0.02,
+                       f'{val:.2f}', ha='center', va='bottom', fontsize=7, fontweight='bold')
+    
+    # Add significance markers for Fair Curriculum vs Curriculum CBM (centered above metric group)
+    # F1: p=0.0001 (***), Worst-Group F1: p<0.0001 (***), Performance Gap: p=0.003 (**)
+    sig_markers_metrics = {0: '***', 1: '***', 2: '**'}  # F1, Worst-Group F1, Performance Gap
+    for metric_idx, marker in sig_markers_metrics.items():
+        # Get max height for curriculum and fair curriculum to center marker
+        curriculum_val = summary_dict['curriculum_cbm'][metrics[metric_idx]]['mean']
+        fair_val = summary_dict['fair_curriculum_cbm'][metrics[metric_idx]]['mean']
+        max_height = max(curriculum_val, fair_val)
+        
+        # Center marker above the metric group (not individual bar)
+        x_pos = x_metrics[metric_idx]
+        y_pos = max_height + 0.08  # Position above tallest bar with spacing
+        ax.text(x_pos, y_pos, marker, ha='center', va='bottom', fontsize=14, 
+               fontweight='bold', color='#d62728')
+    
+    ax.set_xlabel('Evaluation Metric', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Score', fontsize=12, fontweight='bold')
+    ax.set_title('(B) Multi-Objective Performance Comparison', fontsize=13, fontweight='bold', pad=10)
+    ax.set_xticks(x_metrics)
+    ax.set_xticklabels(metric_labels, fontsize=10)
+    
+    # Add arrows/annotations to indicate direction (positioned under title)
+    ax.text(0, 0.82, '↑ higher better', ha='center', va='top', fontsize=8, style='italic', color='green')
+    ax.text(1, 0.82, '↑ higher better', ha='center', va='top', fontsize=8, style='italic', color='green')
+    ax.text(2, 0.82, '↓ lower better', ha='center', va='top', fontsize=8, style='italic', color='red')
+    
+    ax.grid(axis='y', alpha=0.3, linewidth=0.6, linestyle='--')
+    ax.set_ylim(0, 0.85)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_linewidth(1.2)
+    
+    # ========== SHARED LEGEND ==========
+    # Create compact horizontal legend anchored to Panel B's x-axis label
+    handles = [plt.Line2D([0], [0], marker='s', color='w', markerfacecolor=colors[m], 
+                         markeredgecolor='black', markersize=7, linewidth=0, markeredgewidth=0.5) 
+               for m in key_models]
+    labels = [model_labels[m] for m in key_models]
+    
+    # Position legend centered horizontally, below the x-axis labels
+    plt.tight_layout()
+    fig.legend(handles, labels, loc='upper center', ncol=5, fontsize=8.5, 
+               frameon=False, columnspacing=0.8,
+               handletextpad=0.3, bbox_to_anchor=(0.5, -0.001))
+    plt.savefig(save_dir / 'main_results_figure.png', dpi=300, bbox_inches='tight', pad_inches=0.05)
+    plt.savefig(save_dir / 'main_results_figure.pdf', bbox_inches='tight', pad_inches=0.05)
+    print(f"Saved main results figure to {save_dir / 'main_results_figure.png'} and .pdf")
+    plt.close()
+
+
 def plot_per_fitzpatrick_performance(all_results_df, save_dir):
     """Plot performance metrics for each Fitzpatrick skin type across all models."""
     fig, axes = plt.subplots(1, 3, figsize=(20, 6))
@@ -632,6 +848,80 @@ def plot_fairness_improvement_heatmap(all_results_df, save_dir):
     plt.tight_layout()
     plt.savefig(save_dir / 'fairness_improvement_heatmap.png', dpi=300, bbox_inches='tight')
     print(f"Saved fairness improvement heatmap to {save_dir / 'fairness_improvement_heatmap.png'}")
+
+
+def perform_per_fitzpatrick_ttests(all_results_df, baseline_model, comparison_model, save_dir):
+    """Perform pairwise t-tests for each Fitzpatrick type between two models."""
+    baseline_df = all_results_df[all_results_df['model_type'] == baseline_model]
+    comparison_df = all_results_df[all_results_df['model_type'] == comparison_model]
+    
+    results = []
+    
+    for fitz_type in range(1, 7):
+        col_name = f'fitz_{fitz_type}_f1'
+        
+        if col_name not in baseline_df.columns or col_name not in comparison_df.columns:
+            continue
+        
+        baseline_vals = baseline_df[col_name].values
+        comparison_vals = comparison_df[col_name].values
+        
+        # Ensure same length
+        n = min(len(baseline_vals), len(comparison_vals))
+        baseline_vals = baseline_vals[:n]
+        comparison_vals = comparison_vals[:n]
+        
+        # Remove NaN values
+        valid_mask = np.isfinite(baseline_vals) & np.isfinite(comparison_vals)
+        baseline_vals = baseline_vals[valid_mask]
+        comparison_vals = comparison_vals[valid_mask]
+        
+        if len(baseline_vals) < 2:
+            continue
+        
+        # Paired t-test
+        t_stat, p_value = stats.ttest_rel(comparison_vals, baseline_vals)
+        
+        # Effect size (Cohen's d)
+        diff = comparison_vals - baseline_vals
+        mean_diff = np.mean(diff)
+        std_diff = np.std(diff, ddof=1)
+        cohens_d = mean_diff / std_diff if std_diff > 1e-10 else 0.0
+        
+        # Percent improvement
+        baseline_mean = np.mean(baseline_vals)
+        comparison_mean = np.mean(comparison_vals)
+        pct_improvement = ((comparison_mean - baseline_mean) / baseline_mean * 100) if baseline_mean > 0 else 0
+        
+        results.append({
+            'Fitzpatrick_Type': f'Type {fitz_type}',
+            'Baseline_Mean': f'{baseline_mean:.3f}',
+            'Comparison_Mean': f'{comparison_mean:.3f}',
+            'Mean_Diff': f'{mean_diff:.3f}',
+            'Pct_Change': f'{pct_improvement:+.1f}%',
+            't_statistic': f'{t_stat:.3f}',
+            'p_value': f'{p_value:.6f}',
+            'cohens_d': f'{cohens_d:.3f}',
+            'Significant': '***' if p_value < 0.001 else '**' if p_value < 0.01 else '*' if p_value < 0.05 else 'ns'
+        })
+    
+    results_df = pd.DataFrame(results)
+    
+    # Save results
+    csv_path = save_dir / f'per_fitzpatrick_ttests_{baseline_model}_vs_{comparison_model}.csv'
+    results_df.to_csv(csv_path, index=False)
+    print(f"Saved per-Fitzpatrick t-tests to {csv_path}")
+    
+    # Print to console
+    print("\n" + "="*120)
+    print(f"PER-FITZPATRICK STATISTICAL TESTS: {comparison_model} vs {baseline_model}")
+    print("="*120)
+    print(results_df.to_string(index=False))
+    print("="*120)
+    print("Significance: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant")
+    print("="*120)
+    
+    return results_df
 
 
 def create_fitzpatrick_summary_table(all_results_df, save_dir):
@@ -1495,6 +1785,22 @@ def main():
         summary = compute_summary_statistics(df, all_metrics)
         summary_dict[model_type] = summary
         
+        # CRITICAL: Update the dataframe with corrected worst_group_f1 values for statistical tests
+        # The compute_summary_statistics() corrects the aggregate, but we need per-run corrections
+        # for pairwise t-tests to be accurate
+        if 'worst_group_f1' in df.columns:
+            # Recalculate worst_group_f1 for each run as min(fitz_1_f1, ..., fitz_6_f1)
+            fitz_cols = [f'fitz_{i}_f1' for i in range(1, 7)]
+            if all(col in df.columns for col in fitz_cols):
+                # Take minimum across Fitzpatrick groups for each run
+                results_dict[model_type]['worst_group_f1'] = df[fitz_cols].min(axis=1)
+                # Also update best_group_f1 and performance_gap for consistency
+                results_dict[model_type]['best_group_f1'] = df[fitz_cols].max(axis=1)
+                results_dict[model_type]['performance_gap'] = (
+                    results_dict[model_type]['best_group_f1'] - 
+                    results_dict[model_type]['worst_group_f1']
+                )
+        
         # Print key metrics
         if 'f1' in summary:
             print(f"  F1: {summary['f1']['mean']:.4f} ± {summary['f1']['std']:.4f}")
@@ -1551,6 +1857,18 @@ def main():
     print("GENERATING CORE PAPER VISUALIZATIONS")
     print("="*80)
     
+    # MAIN FIGURE: Publication-quality 3-panel (for paper)
+    print("\n*** MAIN RESULTS FIGURE (3-panel) ***")
+    print("Panel A: Per-Fitzpatrick F1 with significance")
+    print("Panel B: Multi-objective performance comparison")  
+    print("Panel C: Recall trends across skin types")
+    plot_main_results_figure(all_results_df, summary_dict, analysis_dir)
+    
+    # Supplementary visualizations
+    print("\n" + "="*80)
+    print("GENERATING SUPPLEMENTARY VISUALIZATIONS")
+    print("="*80)
+    
     # Core plots for paper
     print("\n1. Per-Fitzpatrick Performance (F1, Precision, Recall)...")
     plot_per_fitzpatrick_performance(all_results_df, analysis_dir)
@@ -1570,6 +1888,15 @@ def main():
     # Generate Fitzpatrick summary table (CSV + LaTeX)
     print("\n6. Fitzpatrick Summary Table (CSV + LaTeX)...")
     fitzpatrick_summary = create_fitzpatrick_summary_table(all_results_df, analysis_dir)
+    
+    # Per-Fitzpatrick statistical tests
+    print("\n" + "="*80)
+    print("PER-FITZPATRICK STATISTICAL SIGNIFICANCE TESTS")
+    print("="*80)
+    
+    if baseline in results_dict and comparison in results_dict:
+        print(f"\n7. Per-Fitzpatrick Statistical Tests ({comparison} vs {baseline})...")
+        per_fitz_tests = perform_per_fitzpatrick_ttests(all_results_df, baseline, comparison, analysis_dir)
     
     # Save raw results
     all_results_df.to_csv(analysis_dir / 'all_results.csv', index=False)

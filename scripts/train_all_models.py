@@ -186,7 +186,8 @@ def load_concept_names(concepts_path='data/skincap_concepts.txt'):
     return concepts
 
 
-def create_model(model_type, num_concepts, backbone='swin', fairness_lambda=1.0, adversarial_lambda=0.5, concept_names=None):
+def create_model(model_type, num_concepts, backbone='swin', fairness_lambda=1.0, adversarial_lambda=0.5, 
+                 concept_names=None, ablation_key=None):
     """
     Create model based on type.
     
@@ -197,10 +198,21 @@ def create_model(model_type, num_concepts, backbone='swin', fairness_lambda=1.0,
         fairness_lambda: Weight for fairness loss (Fair CBM only)
         adversarial_lambda: Weight for adversarial loss (Fair CBM only)
         concept_names: List of concept names (for Fair CBM)
+        ablation_key: Ablation configuration ('no_phase2', 'no_phase3', 'no_phase4', 'no_adversarial', 'full_model', None)
     
     Returns:
         model: PyTorch model
     """
+    # Map ablation keys to phase disabling
+    ablation_configs = {
+        'no_phase1': {'disabled_phases': [1], 'disable_adversarial': False},
+        'no_phase2': {'disabled_phases': [2], 'disable_adversarial': False},
+        'no_phase3': {'disabled_phases': [3], 'disable_adversarial': False},
+        'no_phase4': {'disabled_phases': [4], 'disable_adversarial': False},
+        'no_adversarial': {'disabled_phases': [], 'disable_adversarial': True},
+        'full_model': {'disabled_phases': [], 'disable_adversarial': False},
+    }
+    
     if model_type == 'direct':
         model = DirectClassifier(backbone=backbone)
     
@@ -235,13 +247,18 @@ def create_model(model_type, num_concepts, backbone='swin', fairness_lambda=1.0,
         if concept_names is None:
             concept_names = [f'concept_{i}' for i in range(num_concepts)]
         
+        # Apply ablation configuration if provided
+        ablation_config = ablation_configs.get(ablation_key, {'disabled_phases': [], 'disable_adversarial': False})
+        
         model = FairCurriculumCBM(
             num_concepts=num_concepts,
             backbone=backbone,
             num_groups=6,  # Fitzpatrick types I-VI
             fairness_lambda=fairness_lambda,
             adversarial_lambda_target=adversarial_lambda,
-            concept_names=concept_names
+            concept_names=concept_names,
+            disabled_phases=ablation_config['disabled_phases'],
+            disable_adversarial=ablation_config['disable_adversarial']
         )
     
     else:
@@ -710,6 +727,11 @@ def main():
                         choices=['swin', 'convnext', 'vit', 'efficientnet', 'mobilenet'],
                         help='Backbone architecture')
     
+    # Ablation configuration (Fair Curriculum CBM only)
+    parser.add_argument('--ablation_key', type=str, default=None,
+                        choices=['no_phase1', 'no_phase2', 'no_phase3', 'no_phase4', 'no_adversarial', 'full_model'],
+                        help='Ablation configuration key (only for fair_curriculum_cbm)')
+    
     # Fairness hyperparameters (Fair CBM only)
     parser.add_argument('--fairness_lambda', type=float, default=0.1,
                         help='Weight for fairness loss (default: 0.1)')
@@ -839,13 +861,16 @@ def main():
     
     # Create model
     print(f"Creating {args.model_type} model with {args.backbone} backbone...")
+    if args.ablation_key:
+        print(f"Ablation: {args.ablation_key}")
     model = create_model(
         model_type=args.model_type,
         num_concepts=num_concepts,
         backbone=args.backbone,
         fairness_lambda=args.fairness_lambda,
         adversarial_lambda=args.adversarial_lambda,
-        concept_names=concepts
+        concept_names=concepts,
+        ablation_key=args.ablation_key
     )
     model = model.to(device)
     
@@ -1049,7 +1074,24 @@ def main():
                 best_val_f1 = composite_metric  # Store composite for fair models
                 best_epoch = epoch
                 
-                # Only save if globally best across all experiments
+                # Save local best checkpoint (will be tested at end, then deleted by SLURM)
+                local_checkpoint_path = save_dir / 'best_model.pt'
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'val_f1': val_f1,
+                    'performance_gap': performance_gap,
+                    'composite_score': composite_metric,
+                    'config': config
+                }, local_checkpoint_path)
+                
+                if is_fairness_model and performance_gap is not None:
+                    print(f"Local best updated: composite={composite_metric:.4f}, F1={val_f1:.4f}, gap={performance_gap:.4f}")
+                else:
+                    print(f"Local best updated: F1={val_f1:.4f}")
+                
+                # Check if also globally best across all experiments
                 is_saved = check_and_save_global_best(
                     model_type=args.model_type,
                     val_f1=val_f1,
@@ -1065,33 +1107,31 @@ def main():
                 if is_saved:
                     global_best_saved = True
                     if is_fairness_model and performance_gap is not None:
-                        print(f"Saved global best model (composite: {composite_metric:.4f}, F1: {val_f1:.4f}, gap: {performance_gap:.4f})")
+                        print(f"✓ Also GLOBAL best! (composite: {composite_metric:.4f}, F1: {val_f1:.4f}, gap: {performance_gap:.4f})")
                     else:
-                        print(f"Saved global best model (F1: {val_f1:.4f})")
+                        print(f"✓ Also GLOBAL best! (F1: {val_f1:.4f})")
     
     # Final test evaluation
     print("\nFinal Test Evaluation:")
-    # Load global best model if this run produced it
-    global_best_model_path = save_dir.parent.parent.parent / f'global_best_{args.model_type}.pt'
-    if global_best_saved and global_best_model_path.exists():
-        checkpoint = torch.load(global_best_model_path)
+    # Load local best checkpoint (every run saves its own best)
+    local_checkpoint_path = save_dir / 'best_model.pt'
+    if local_checkpoint_path.exists():
+        checkpoint = torch.load(local_checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
         
-        # Display composite metric for fairness models
+        # Display what model is being tested
         is_fairness_model = args.model_type in ['fair_curriculum_cbm', 'fair_standard_cbm']
         if is_fairness_model and 'composite_score' in checkpoint and 'performance_gap' in checkpoint:
-            print(f"Loaded global best model from epoch {checkpoint['epoch']+1} "
+            print(f"Testing local best from epoch {checkpoint['epoch']+1} "
                   f"(composite: {checkpoint['composite_score']:.4f}, "
                   f"F1: {checkpoint['val_f1']:.4f}, gap: {checkpoint['performance_gap']:.4f})")
         else:
-            print(f"Loaded global best model from epoch {checkpoint['epoch']+1} (F1: {checkpoint['val_f1']:.4f})")
-    elif best_epoch >= 0:
-        # Display what metric was used for selection
-        is_fairness_model = args.model_type in ['fair_curriculum_cbm', 'fair_standard_cbm']
-        if is_fairness_model:
-            print(f"Using model from best epoch {best_epoch+1} (composite: {best_val_f1:.4f}) - not globally best")
-        else:
-            print(f"Using model from best epoch {best_epoch+1} (F1: {best_val_f1:.4f}) - not globally best")
+            print(f"Testing local best from epoch {checkpoint['epoch']+1} (F1: {checkpoint.get('val_f1', best_val_f1):.4f})")
+        
+        if global_best_saved:
+            print("(This model is also the GLOBAL best)")
+    else:
+        print(f"Warning: No local best checkpoint found, testing final epoch model")
     
     test_results = evaluate(model, test_loader, device, args.model_type, compute_fairness=True)
     test_f1 = test_results['binary_metrics']['f1']

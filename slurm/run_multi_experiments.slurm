@@ -2,7 +2,7 @@
 #SBATCH --job-name=fair_cbm_%j
 #SBATCH --output=logs/fair_cbm_%j_%a.out
 #SBATCH --error=logs/fair_cbm_%j_%a.err
-#SBATCH --array=1-100
+#SBATCH --array=1-100%10
 #SBATCH --time=24:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=1
@@ -100,118 +100,21 @@ train_model() {
     if [ $? -eq 0 ]; then
         echo "$MODEL_NAME training completed successfully"
         
-        # Check if this model is the best so far and update global best
-        update_best_model "$MODEL_TYPE" "$MODEL_NAME"
+        # Training script already:
+        # 1. Saved local best_model.pt during training
+        # 2. Tested it on test set
+        # 3. Saved results to history.json
+        # 4. Checked if globally best and saved to results/global_best_*.pt
+        
+        # IMMEDIATELY cleanup local checkpoint to free space before next model trains
+        echo "Cleaning up local checkpoint for $MODEL_TYPE..."
+        rm -f "${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/best_model.pt"
+        rm -f "${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/final_model.pt"
     else
         echo "ERROR: $MODEL_NAME training failed"
         return 1
     fi
     echo ""
-}
-
-# Function to update best model if current run is better
-update_best_model() {
-    local MODEL_TYPE=$1
-    local MODEL_NAME=$2
-    
-    # Create shared directory for best models (across all array jobs)
-    BEST_MODELS_DIR="${RESULTS_DIR}/${EXP_NAME}/best_models"
-    mkdir -p $BEST_MODELS_DIR
-    
-    # Get validation F1 from current run
-    HISTORY_FILE="${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/history.json"
-    if [ ! -f "$HISTORY_FILE" ]; then
-        echo "  Warning: No history file found for $MODEL_TYPE"
-        return
-    fi
-    
-    CURRENT_F1=$(python -c "
-import json
-try:
-    with open('${HISTORY_FILE}') as f:
-        history = json.load(f)
-    if 'val' in history and len(history['val']) > 0:
-        val_f1s = [v['standard_metrics']['f1'] for v in history['val']]
-        print(max(val_f1s))
-    else:
-        print(-1)
-except:
-    print(-1)
-")
-    
-    if [ "$CURRENT_F1" == "-1" ]; then
-        echo "  Warning: Could not extract validation F1 for $MODEL_TYPE"
-        return
-    fi
-    
-    # Lock file for atomic operations
-    LOCK_FILE="${BEST_MODELS_DIR}/${MODEL_TYPE}.lock"
-    BEST_F1_FILE="${BEST_MODELS_DIR}/${MODEL_TYPE}_best_f1.txt"
-    
-    # Copy model to temp location first
-    TEMP_MODEL="${BEST_MODELS_DIR}/${MODEL_TYPE}_run_${RUN_ID}_temp.pt"
-    SOURCE_MODEL="${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/best_model.pt"
-    
-    if [ ! -f "$SOURCE_MODEL" ]; then
-        echo "  Warning: No best_model.pt found for $MODEL_TYPE"
-        return
-    fi
-    
-    # Copy to temp location (only place besides shared best_models where model exists)
-    cp "$SOURCE_MODEL" "$TEMP_MODEL"
-    
-    # Use flock for atomic file locking
-    (
-        flock -x 200
-        
-        # Read current best F1 (if exists)
-        if [ -f "$BEST_F1_FILE" ]; then
-            BEST_F1=$(cat "$BEST_F1_FILE")
-        else
-            BEST_F1=-1
-        fi
-        
-        # Compare and update if current is better
-        IS_BETTER=$(python -c "print(1 if float('${CURRENT_F1}') > float('${BEST_F1}') else 0)")
-        
-        if [ "$IS_BETTER" == "1" ]; then
-            echo "  ✓ NEW BEST $MODEL_NAME: Run ${RUN_ID} with Val F1 = ${CURRENT_F1} (previous best: ${BEST_F1})"
-            
-            # Update best F1 file
-            echo "$CURRENT_F1" > "$BEST_F1_FILE"
-            
-            # Get the best epoch from history
-            BEST_EPOCH=$(python -c "
-import json
-with open('${HISTORY_FILE}') as f:
-    history = json.load(f)
-val_f1s = [v['standard_metrics']['f1'] for v in history['val']]
-best_idx = val_f1s.index(max(val_f1s))
-print(history['val'][best_idx]['epoch'])
-")
-            
-            # Move temp to best (atomic replace)
-            mv "$TEMP_MODEL" "${BEST_MODELS_DIR}/${MODEL_TYPE}_best.pt"
-            
-            # Copy history
-            cp "${HISTORY_FILE}" \
-               "${BEST_MODELS_DIR}/${MODEL_TYPE}_best_history.json"
-            
-            # Save metadata
-            echo "Run: ${RUN_ID}, Seed: ${SEED}, Val F1: ${CURRENT_F1}, Best Epoch: ${BEST_EPOCH}" > \
-                 "${BEST_MODELS_DIR}/${MODEL_TYPE}_best_info.txt"
-        else
-            echo "  Current $MODEL_NAME Val F1 = ${CURRENT_F1} (best so far: ${BEST_F1})"
-            # Delete temp file - not the best
-            rm -f "$TEMP_MODEL"
-        fi
-        
-    ) 200>"$LOCK_FILE"
-    
-    # Clean up model checkpoint only - keep history.json for analysis
-    rm -f "${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/best_model.pt"
-    rm -f "${RESULTS_DIR}/${EXP_NAME}/run_${RUN_ID}/${MODEL_TYPE}/final_model.pt"
-    # Keep history.json - needed for analyze_multi_run_results.py
 }
 
 # Train all 5 models
@@ -262,3 +165,12 @@ if [ $SLURM_ARRAY_TASK_ID -eq $N_RUNS ]; then
 fi
 
 echo "Job complete!"
+Global best models saved in: ${RESULTS_DIR}/"
+    echo "  - global_best_direct.pt"
+    echo "  - global_best_standard_cbm.pt"
+    echo "  - global_best_fair_standard_cbm.pt"
+    echo "  - global_best_curriculum_cbm.pt"
+    echo "  - global_best_fair_curriculum_cbm.pt"
+    echo ""
+    echo "Individual run results in: ${RESULTS_DIR}/${EXP_NAME}/run_*/*/history.json"
+    echo "Total: 5 global best models + 500 history.json files (100 runs × 5 models)

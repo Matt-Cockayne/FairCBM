@@ -263,17 +263,20 @@ class PhasedFairnessLoss(nn.Module):
     4. Performance Parity: Balance all three (0.33 DP + 0.33 EO + 0.34 PG)
     """
     
-    def __init__(self, total_epochs: int, num_groups: int = 6):
+    def __init__(self, total_epochs: int, num_groups: int = 6,
+                 disabled_phases: Optional[List[int]] = None):
         """
         Initialize PhasedFairnessLoss.
         
         Args:
             total_epochs: Total training epochs
             num_groups: Number of demographic groups
+            disabled_phases: List of phase numbers (1-4) to disable for ablation
         """
         super().__init__()
         self.total_epochs = total_epochs
         self.num_groups = num_groups
+        self.disabled_phases = disabled_phases or []
     
     def _get_phase(self, epoch: int) -> str:
         """Determine current phase based on epoch."""
@@ -306,6 +309,32 @@ class PhasedFairnessLoss(nn.Module):
             Weighted fairness loss
         """
         phase = self._get_phase(epoch)
+        progress = epoch / self.total_epochs
+        
+        # Determine current phase number for ablation
+        if progress <= 0.25:
+            phase_num = 1
+        elif progress <= 0.50:
+            phase_num = 2
+        elif progress <= 0.75:
+            phase_num = 3
+        else:
+            phase_num = 4
+        
+        # If current phase is disabled, use fallback logic
+        if phase_num in self.disabled_phases:
+            # Phase 1 disabled → skip to Phase 2 behavior (DP from start)
+            if phase_num == 1 and 2 not in self.disabled_phases:
+                phase = 'demographic_parity'
+            # Phase 2 disabled → use Phase 1 behavior (no fairness)
+            elif phase_num == 2:
+                return torch.tensor(0.0, device=predictions.device)
+            # Phase 3 disabled → continue Phase 2 behavior (DP only)
+            elif phase_num == 3 and 2 not in self.disabled_phases:
+                phase = 'demographic_parity'
+            # Phase 4 disabled → continue Phase 3 behavior (DP + EO)
+            elif phase_num == 4 and 3 not in self.disabled_phases:
+                phase = 'equalized_odds'
         
         # Ensure predictions are probabilities
         if predictions.min() < 0 or predictions.max() > 1:
@@ -469,7 +498,9 @@ class FairCurriculumCBM(MinimalCurriculumCBM):
                  adversarial_lambda_target: float = 0.01,
                  dropout_rate: float = 0.1,
                  device: torch.device = None,
-                 concept_names: Optional[List[str]] = None):
+                 concept_names: Optional[List[str]] = None,
+                 disabled_phases: Optional[List[int]] = None,
+                 disable_adversarial: bool = False):
         """
         Initialize Fair Curriculum CBM.
         
@@ -482,6 +513,8 @@ class FairCurriculumCBM(MinimalCurriculumCBM):
             dropout_rate: Dropout rate for classifiers
             device: Torch device
             concept_names: List of concept names (optional, for interpretability)
+            disabled_phases: List of phase numbers (1-4) to disable for ablation
+            disable_adversarial: Disable adversarial debiasing for ablation
         """
         # Initialize parent curriculum CBM
         super().__init__(
@@ -495,11 +528,14 @@ class FairCurriculumCBM(MinimalCurriculumCBM):
         self.fairness_lambda = fairness_lambda
         self.adversarial_lambda_target = adversarial_lambda_target
         self.concept_names = concept_names or [f"concept_{i}" for i in range(num_concepts)]
+        self.disabled_phases = disabled_phases or []
+        self.disable_adversarial = disable_adversarial
         
         # Phased fairness loss
         self.fairness_loss_fn = PhasedFairnessLoss(
             total_epochs=100,  # Default, will be updated during training
-            num_groups=num_groups
+            num_groups=num_groups,
+            disabled_phases=disabled_phases
         )
         
         # Adversarial discriminator for Fitzpatrick type prediction
@@ -572,6 +608,14 @@ class FairCurriculumCBM(MinimalCurriculumCBM):
         - Phase 3 (50-75%): Linear warmup from 0 to target
         - Phase 4 (75-100%): Full target weight
         """
+        # If adversarial is disabled for ablation, return 0
+        if self.disable_adversarial:
+            return 0.0
+        
+        # If Phase 3 is disabled, adversarial never activates
+        if 3 in self.disabled_phases:
+            return 0.0
+        
         progress = epoch / total_epochs
         
         if progress <= 0.50:
