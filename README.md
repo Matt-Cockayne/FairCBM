@@ -1,4 +1,4 @@
-# FairCBM: Fairness-First Curriculum Learning for Concept Bottleneck Models
+# Fair Curriculum Learning for Concept Bottleneck Models in Dermatology
 
 **Matthew J. Cockayne, Marco Ortolani, Baidaa Al-Bander** — MICCAI 2026
 
