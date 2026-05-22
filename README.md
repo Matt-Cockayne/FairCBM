@@ -48,12 +48,6 @@ FairCBM/
 │   ├── evaluate_fairness_comparison.py # Cross-model fairness comparison
 │   ├── generate_fairness_statistics_tables.py
 │   └── download_weights.py             # Download pretrained backbone weights
-├── vis/                        # Post-hoc visualisation scripts
-│   ├── generate_visualizations.py      # Master visualisation script (paper figures)
-│   ├── create_miccai_visualizations.py
-│   ├── plot_fairness_tradeoff.py
-│   ├── analyze_single_run.py
-│   └── ...
 ├── slurm/                      # SLURM batch scripts
 │   ├── run_multi_experiments.slurm     # 100-run array job (main experiments)
 │   ├── run_single_experiment.slurm     # Single test run
@@ -96,7 +90,13 @@ python scripts/download_weights.py
 
 ## Data Preparation
 
-The SkinCap dataset should be organised as follows:
+### Dataset availability
+
+The dataset is available at [https://huggingface.co/datasets/joshuachou/SkinCAP](https://huggingface.co/datasets/joshuachou/SkinCAP). SkinCAP extends the SkinCON benchmark [Daneshjou et al., 2022] with free-text natural language captions per image; SkinCON itself provides the 3,230 dermatological images, six Fitzpatrick skin type labels, binary malignancy labels, and 23 binary morphological concept annotations. The experiments in this work use only the SkinCON-derived structured annotations (images, Fitzpatrick labels, concept labels, and malignancy labels); the free-text captions are not used.
+
+### Directory structure
+
+The SkinCAP dataset should be organised as follows:
 
 ```
 /path/to/SkinCAP/
