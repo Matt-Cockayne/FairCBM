@@ -238,12 +238,21 @@ All improvements of Fair Curriculum CBM over Curriculum CBM on F1, recall, lowes
 
 ## Fairness Metrics
 
-| Metric | Definition | Target |
+### Evaluation metrics
+
+| Metric | Definition |
+|---|---|
+| Lowest-group F1 (LG-F1) | $\min_g F1_g$ across Fitzpatrick types I--VI |
+| Performance Gap | $\max_g F1_g - \min_g F1_g$ |
+| DP Disparity | $\max_a P(\hat{Y}=1 \mid A=a) - \min_a P(\hat{Y}=1 \mid A=a)$ |
+
+### Training fairness losses
+
+| Loss | Definition | Active phases |
 |---|---|---|
-| Statistical Parity Difference (SPD) | $\max_a P(\hat{Y}=1 \mid A=a) - \min_a P(\hat{Y}=1 \mid A=a)$ | < 0.10 |
-| Equalized Odds Difference (EOD) | Max disparity in TPR and FPR across groups | < 0.10 |
-| Performance Gap | $\max_g F1_g - \min_g F1_g$ | < 0.10 |
-| Calibration Disparity | $\max_g \text{ECE}_g - \min_g \text{ECE}_g$ | < 0.05 |
+| $\mathcal{L}_\text{DP}$ | $\sum_{a,a'} \lvert \mathbb{E}_{x \sim a}[\sigma(f(x))] - \mathbb{E}_{x \sim a'}[\sigma(f(x))] \rvert$ | 2, 3, 4 |
+| $\mathcal{L}_\text{EO}$ | $\sum_{y,a,a'} \lvert \mathbb{E}[\sigma(f(x)) \mid y,a] - \mathbb{E}[\sigma(f(x)) \mid y,a'] \rvert$ | 3, 4 |
+| $\mathcal{L}_\text{PG}$ | $\max_a \widetilde{F1}_a - \min_a \widetilde{F1}_a$ (soft-F1) | 4 |
 
 ---
 
