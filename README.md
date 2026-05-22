@@ -1,6 +1,8 @@
 # FairCBM: Fairness-First Curriculum Learning for Concept Bottleneck Models
 
-**Matthew J. Cockayne** — MICCAI 2026
+**Matthew J. Cockayne, Marco Ortolani, Baidaa Al-Bander** — MICCAI 2026
+
+School of Computer Science and Mathematics, Keele University
 
 ---
 
@@ -12,7 +14,7 @@ The method achieves a 44% reduction in performance gap across Fitzpatrick skin t
 
 **Figure 1: Model architecture and four-phase curriculum.**
 
-![FairCBM Architecture](figures/Faircbm.png)
+<img src="figures/Faircbm.png" alt="FairCBM Architecture" style="background-color: white; padding: 8px;">
 
 **Figure 2: Main results — per-skin-type F1 and multi-objective comparison.**
 
