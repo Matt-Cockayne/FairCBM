@@ -8,9 +8,11 @@ School of Computer Science and Mathematics, Keele University
 
 ## Overview
 
-FairCBM introduces a **four-phase fairness-first curriculum** for Concept Bottleneck Models (CBMs) applied to dermatology diagnosis. Rather than ordering training by concept difficulty, FairCBM structures the curriculum around a sequence of fairness objectives—progressing from balanced data representation through demographic parity, equalized odds, and performance parity—while training all morphological concepts jointly throughout.
+Deep learning models for dermatology exhibit systematic performance disparities across skin types, with darker-skinned patients experiencing significantly lower diagnostic accuracy. These disparities arise from dataset imbalance (medical imaging datasets over-represent Fitzpatrick types I--III), biased feature extraction, and evaluation practices that report aggregate rather than per-group performance. Concept Bottleneck Models (CBMs) [Koh et al., 2020] address interpretability by routing predictions through an intermediate layer of human-interpretable concepts, but lack explicit fairness mechanisms.
 
-The method achieves a 44% reduction in performance gap across Fitzpatrick skin types compared to a concept-difficulty curriculum (0.361 → 0.203, p=0.003), a 63% improvement in lowest-group F1 (0.270 → 0.441, p<0.001), and a simultaneous 5.3% gain in overall F1 (0.580 → 0.611, p<0.001), while maintaining full interpretability through the concept bottleneck.
+FairCBM introduces a four-phase fairness-first curriculum for CBMs that reframes curriculum learning from task-difficulty ordering to fairness-objective ordering. Rather than progressing from easy to hard concepts, training is structured across four successive phases: balanced foundation, demographic parity, equalized odds, and performance parity. All 23 morphological concepts are trained jointly throughout. The fairness loss composition, sampling strategy, and adversarial debiasing weight change between phases. This progressive structure stabilises adversarial debiasing by introducing fairness constraints incrementally rather than simultaneously.
+
+On SkinCon (3,230 dermatological images, six Fitzpatrick types), Fair Curriculum CBM achieves a 44% reduction in performance gap between skin types (0.361 to 0.203, p=0.003), a 63% improvement in lowest-group F1 (0.270 to 0.441, p<0.001), and a simultaneous 5.3% gain in overall F1 (0.580 to 0.611, p<0.001). Per-type analysis confirms targeted improvements on types II, V, and VI (p<0.005) with no statistically significant degradation on lighter skin types (p>0.13). Results are validated across 100 independent runs per model.
 
 **Figure 1: Model architecture and four-phase curriculum.**
 
