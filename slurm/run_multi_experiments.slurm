@@ -165,12 +165,4 @@ if [ $SLURM_ARRAY_TASK_ID -eq $N_RUNS ]; then
 fi
 
 echo "Job complete!"
-Global best models saved in: ${RESULTS_DIR}/"
-    echo "  - global_best_direct.pt"
-    echo "  - global_best_standard_cbm.pt"
-    echo "  - global_best_fair_standard_cbm.pt"
-    echo "  - global_best_curriculum_cbm.pt"
-    echo "  - global_best_fair_curriculum_cbm.pt"
-    echo ""
-    echo "Individual run results in: ${RESULTS_DIR}/${EXP_NAME}/run_*/*/history.json"
-    echo "Total: 5 global best models + 500 history.json files (100 runs × 5 models)
+echo "Job complete!"

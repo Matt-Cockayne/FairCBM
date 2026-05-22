@@ -5,8 +5,8 @@ This script:
 1. Aggregates results from 100 runs per model type
 2. Computes statistical summaries (mean, std, CI)
 3. Performs pairwise statistical tests
-4. Generates publication-ready visualizations
-5. Creates comprehensive comparison tables
+4. Generates visualizations
+5. Creates comparison tables
 
 Usage:
     python analyze_multi_run_results.py --exp_name multi_run_1234567 --backbone swin
@@ -526,7 +526,7 @@ def plot_main_results_figure(all_results_df, summary_dict, save_dir):
     
     # ========== PANEL A: Per-Fitzpatrick F1 Bar Chart ==========
     ax = axes[0]
-    fitz_types = [f'Type {i}' for i in range(1, 7)]
+    fitz_types = ['Type I', 'Type II', 'Type III', 'Type IV', 'Type V', 'Type VI']
     x = np.arange(len(fitz_types))
     width = 0.15
     
@@ -546,7 +546,7 @@ def plot_main_results_figure(all_results_df, summary_dict, save_dir):
                    capsize=2.5, capthick=0.8, alpha=0.6, linewidth=0.8)
     
     # Add significance markers for Fair Curriculum vs Curriculum
-    sig_markers = {1: '***', 4: '**', 5: '**'}  # Types 2, 5, 6
+    sig_markers = {1: '(***)', 4: '(**)', 5: '(**)'}  # Types 2, 5, 6
     for fitz_idx, marker in sig_markers.items():
         curriculum_mean = all_results_df[all_results_df['model_type'] == 'curriculum_cbm'][f'fitz_{fitz_idx+1}_f1'].mean()
         fair_mean = all_results_df[all_results_df['model_type'] == 'fair_curriculum_cbm'][f'fitz_{fitz_idx+1}_f1'].mean()
@@ -571,7 +571,7 @@ def plot_main_results_figure(all_results_df, summary_dict, save_dir):
     ax = axes[1]
     
     metrics = ['f1', 'worst_group_f1', 'performance_gap']
-    metric_labels = ['Overall F1', 'Worst-Group F1', 'Performance Gap']
+    metric_labels = ['Overall F1', 'Lowest-Group F1', 'Performance Gap']
     x_metrics = np.arange(len(metrics))
     width_metric = 0.15
     
@@ -612,7 +612,7 @@ def plot_main_results_figure(all_results_df, summary_dict, save_dir):
     
     # Add significance markers for Fair Curriculum vs Curriculum CBM (centered above metric group)
     # F1: p=0.0001 (***), Worst-Group F1: p<0.0001 (***), Performance Gap: p=0.003 (**)
-    sig_markers_metrics = {0: '***', 1: '***', 2: '**'}  # F1, Worst-Group F1, Performance Gap
+    sig_markers_metrics = {0: '(***)', 1: '(***)', 2: '(**)'}  # F1, Worst-Group F1, Performance Gap
     for metric_idx, marker in sig_markers_metrics.items():
         # Get max height for curriculum and fair curriculum to center marker
         curriculum_val = summary_dict['curriculum_cbm'][metrics[metric_idx]]['mean']

@@ -6,7 +6,6 @@ This script:
 1. Loads comprehensive results from all experimental runs
 2. Computes summary statistics per model
 3. Performs paired t-tests comparing Fair Curriculum CBM vs baselines
-4. Generates formatted tables (LaTeX and Markdown)
 """
 
 import pandas as pd

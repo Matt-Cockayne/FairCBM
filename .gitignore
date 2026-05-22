@@ -30,7 +30,7 @@ CBM-env/
 .DS_Store
 Thumbs.db
 
-# Logs (explicitly excluded)
+# Logs
 logs/
 *.log
 *.err
@@ -38,7 +38,7 @@ logs/
 slurm-*.out
 slurm-*.err
 
-# Models and Checkpoints (explicitly excluded)
+# Models and Checkpoints
 *.pt
 *.pth
 *.ckpt
@@ -48,7 +48,7 @@ checkpoints/
 *.pkl
 *.pickle
 
-# Data (large files)
+# Data 
 data/skincap/
 data/celeba/
 *.csv
@@ -69,12 +69,14 @@ temp/
 *.cache
 
 # Plots and visualizations
+.vis/
 *.png
 *.jpg
 *.jpeg
 *.pdf
-!docs/**/*.png
-!docs/**/*.pdf
+!figures/*.png
+!figures/*.jpg
+!figures/*.jpeg
 
 # Misc
 .pytest_cache/
@@ -83,6 +85,6 @@ htmlcov/
 *.bak
 
 # Docs
-docs/ 
-
+docs/
+.github/
 initial_results/
