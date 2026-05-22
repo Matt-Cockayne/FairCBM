@@ -69,7 +69,7 @@ temp/
 *.cache
 
 # Plots and visualizations
-.vis/
+vis/
 *.png
 *.jpg
 *.jpeg
