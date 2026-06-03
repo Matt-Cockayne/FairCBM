@@ -57,10 +57,7 @@ class MinimalCurriculumCBM(nn.Module):
         # Binary classification layer
         self.binary_classifier = nn.Sequential(
             nn.Dropout(dropout_rate),
-            nn.Linear(self.num_concepts, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(64, 1)
+            nn.Linear(num_concepts, 1),
         )
         
         self.to(self.device)

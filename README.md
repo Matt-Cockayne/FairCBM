@@ -22,6 +22,14 @@ On SkinCon (3,230 dermatological images, six Fitzpatrick types), Fair Curriculum
 
 ![Main Results](figures/main_results_figure.png)
 
+**Figure 3: Clinical CBM example — concept bottleneck predictions and diagnosis.**
+
+![Clinical CBM Example](figures/plot1_clinical_CBM.png)
+
+**Figure 4: SkinCon dataset imbalance across Fitzpatrick skin types.**
+
+![Dataset Imbalance](figures/plot2_dataset_imbalance.png)
+
 ---
 
 ## Repository Structure
